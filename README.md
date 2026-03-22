@@ -20,11 +20,10 @@
 
 ## 📝 使用方法
 
-1. **填寫八字信息** - 輸入四柱干支和大運信息
-2. **複製提示詞** - 點擊按鈕複製完整提示詞
-3. **發送給 AI** - 粘貼到 ChatGPT、Claude、Gemini 等任意 AI
-4. **導入結果** - 將 AI 返回的 JSON 數據粘貼回來
-5. **查看 K 線** - 生成完整的人生 K 線圖和分析報告
+1. **填寫出生信息** - 選擇姓名、性別及日期時間，系統會自動排盤。
+2. **配置 API (可選)** - 輸入您的 API 金鑰、模型與基礎 URL。
+3. **一鍵生成** - 點擊「生成 888 人生 K 線」，等待 AI 智能分析後即可查看詳盡報告。
+4. **手動導入 (備選)** - 若您沒有 API Key，仍可使用提示詞生成後，將 JSON 數據貼回「手動導入」板塊。
 
 ---
 
@@ -51,6 +50,21 @@ npm run build
 
 ---
 
+## ⚙️ 環境變數配置 (Vercel / Local)
+
+為了系統安全與簡化使用者操作，您可以透過環境變數預設 API 參數。若設定了 `VITE_API_KEY`，前台將**自動隱藏**模型配置區域。
+
+| 變數名稱 | 說明 | 範例值 |
+| :--- | :--- | :--- |
+| `VITE_API_KEY` | 您的 API 金鑰 (設定後會隱藏 UI 配置區) | `sk-xxxx...` |
+| `VITE_API_BASE_URL` | API 代理地址 (可選) | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `VITE_MODEL_NAME` | 指定大模型名稱 (可選) | `gemini-3-flash-preview` |
+
+> [!TIP]
+> 在 Vercel 中，請前往 **Settings -> Environment Variables** 進行配置。
+
+---
+
 ## 🛠️ 技術棧
 
 - **前端框架**: React 19 + Vite
@@ -62,7 +76,6 @@ npm run build
 
 ## 📸 項目預覽
 ![自動設定](image.png)
-
 
 ---
 
