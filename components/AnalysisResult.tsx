@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { AnalysisData } from '../types';
-import { ScrollText, Briefcase, Coins, Heart, Activity, Users, Star, Info, Brain, Bitcoin, Compass } from 'lucide-react';
+import { ScrollText, Briefcase, Coins, Heart, Activity, Users, Star, Info, Brain, TrendingUp, Compass } from 'lucide-react';
 
 interface AnalysisResultProps {
   analysis: AnalysisData;
@@ -134,8 +134,8 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis }) => {
 
         {/* Crypto Analysis */}
         <Card
-          title="幣圈交易運勢"
-          icon={Bitcoin}
+          title="投資理財運勢"
+          icon={TrendingUp}
           content={analysis.crypto}
           score={analysis.cryptoScore}
           colorClass="text-amber-600"
