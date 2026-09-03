@@ -26,5 +26,5 @@ Conducted a comprehensive multi-phase security audit using `cloudflare/security-
   - Resolved transitive vulnerabilities across build dependencies via `npm audit fix`.
 
 #### Added
-- Installed `cloudflare/security-audit-skill` into `.agent/skills/security-audit` and `.agents/skills/security-audit` for automated security review workflows.
+- Installed `cloudflare/security-audit-skill` into the global environment (`~/.agents/skills/security-audit`, `~/.gemini/skills/security-audit`, and `~/.gemini/antigravity-cli/skills/security-audit`) for machine-wide security review capabilities.
 - Audit run artifacts generated in `~/security-audit-skill/life-destiny-kline/run-1/` (`architecture.md`, `REPORT.md`, `FINDINGS-DETAIL.md`, `findings.json`).
