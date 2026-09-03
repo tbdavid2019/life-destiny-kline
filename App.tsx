@@ -101,6 +101,16 @@ const App: React.FC = () => {
     window.print();
   };
 
+  const escapeHtml = (str: unknown): string => {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  };
+
   const handleSaveHtml = () => {
     if (!result) return;
     const now = new Date();
@@ -120,18 +130,20 @@ const App: React.FC = () => {
     const analysisContainer = document.getElementById('analysis-result-container');
     const analysisHtml = analysisContainer ? analysisContainer.innerHTML : '';
 
+    const safeUserName = escapeHtml(userName);
+
     const tableRows = result.chartData.map(item => {
       const scoreColor = item.close >= item.open ? 'text-green-600' : 'text-red-600';
       const trendIcon = item.close >= item.open ? '▲' : '▼';
       return `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-          <td class="p-3 border-r border-gray-100 text-center font-mono">${item.age}歲</td>
-          <td class="p-3 border-r border-gray-100 text-center font-bold">${item.year} ${item.ganZhi}</td>
-          <td class="p-3 border-r border-gray-100 text-center text-sm">${item.daYun || '-'}</td>
+          <td class="p-3 border-r border-gray-100 text-center font-mono">${escapeHtml(item.age)}歲</td>
+          <td class="p-3 border-r border-gray-100 text-center font-bold">${escapeHtml(item.year)} ${escapeHtml(item.ganZhi)}</td>
+          <td class="p-3 border-r border-gray-100 text-center text-sm">${escapeHtml(item.daYun || '-')}</td>
           <td class="p-3 border-r border-gray-100 text-center font-bold ${scoreColor}">
-            ${item.score} <span class="text-xs">${trendIcon}</span>
+            ${escapeHtml(item.score)} <span class="text-xs">${trendIcon}</span>
           </td>
-          <td class="p-3 text-sm text-gray-700 text-justify leading-relaxed">${item.reason}</td>
+          <td class="p-3 text-sm text-gray-700 text-justify leading-relaxed">${escapeHtml(item.reason)}</td>
         </tr>
       `;
     }).join('');
@@ -168,7 +180,7 @@ const App: React.FC = () => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${userName || '用戶'} - 888人生K線命理報告</title>
+  <title>${safeUserName || '用戶'} - 888人生K線命理報告</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Inter:wght@400;600&display=swap');
@@ -180,8 +192,8 @@ const App: React.FC = () => {
 <body class="bg-gray-50 min-h-screen p-4 md:p-12">
   <div class="max-w-6xl mx-auto space-y-10">
     <div class="text-center border-b border-gray-200 pb-8">
-      <h1 class="text-4xl font-bold font-serif-sc text-gray-900 mb-2">${userName ? userName + '的' : ''}888人生K線命理報告</h1>
-      <p class="text-gray-500 text-sm">生成時間：${timeString}</p>
+      <h1 class="text-4xl font-bold font-serif-sc text-gray-900 mb-2">${safeUserName ? safeUserName + '的' : ''}888人生K線命理報告</h1>
+      <p class="text-gray-500 text-sm">生成時間：${escapeHtml(timeString)}</p>
     </div>
     <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
       <div class="flex items-center gap-2 mb-6">
@@ -207,9 +219,10 @@ const App: React.FC = () => {
 
     const blob = new Blob([fullHtml], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
+    const sanitizedFileNamePrefix = (userName || 'User').replace(/[^a-zA-Z0-9_\u4e00-\u9fa5-]/g, '_');
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${userName || 'User'}_Life_Kline_Report_${now.getTime()}.html`;
+    a.download = `${sanitizedFileNamePrefix}_Life_Kline_Report_${now.getTime()}.html`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

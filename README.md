@@ -50,18 +50,19 @@ npm run build
 
 ---
 
-## ⚙️ 環境變數配置 (Vercel / Local)
+## ⚙️ 環境配置與使用說明 (BYOK 模型)
 
-為了系統安全與簡化使用者操作，您可以透過環境變數預設 API 參數。若設定了 `VITE_API_KEY`，前台將**自動隱藏**模型配置區域。
+本專案為純前端單頁應用程式 (Client-Side SPA)，採用 **BYOK (Bring Your Own Key)** 安全架構：
+- 使用者在瀏覽器中直接輸入個人 API Key（或輸入 `demo` 體驗離線模擬數據）。
+- API Key 僅保存在使用者的瀏覽器 `localStorage` 中，不會上傳到任何第三方託管服務器。
+- **重要安全提示**：純前端靜態建置不應將私有 API Key（如 `VITE_API_KEY`）打包至公開靜態資源中。
+
+若需自定義預設 API 端點或模型名稱，可設定以下環境變數：
 
 | 變數名稱 | 說明 | 範例值 |
 | :--- | :--- | :--- |
-| `VITE_API_KEY` | 您的 API 金鑰 (設定後會隱藏 UI 配置區) | `sk-xxxx...` |
-| `VITE_API_BASE_URL` | API 代理地址 (可選) | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `VITE_MODEL_NAME` | 指定大模型名稱 (可選) | `gemini-3-flash-preview` |
-
-> [!TIP]
-> 在 Vercel 中，請前往 **Settings -> Environment Variables** 進行配置。
+| `VITE_API_BASE_URL` | 預設 API 代理地址 (可選) | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| `VITE_MODEL_NAME` | 預設大模型名稱 (可選) | `gemini-3-flash-preview` |
 
 ---
 

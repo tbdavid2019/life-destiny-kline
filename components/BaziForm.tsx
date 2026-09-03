@@ -23,10 +23,8 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     firstDaYun: initialData?.firstDaYun || '',
     modelName: initialData?.modelName || (import.meta.env.VITE_MODEL_NAME as string) || 'gemini-3-flash-preview',
     apiBaseUrl: initialData?.apiBaseUrl || (import.meta.env.VITE_API_BASE_URL as string) || 'https://generativelanguage.googleapis.com/v1beta/openai',
-    apiKey: initialData?.apiKey || (import.meta.env.VITE_API_KEY as string) || '',
+    apiKey: initialData?.apiKey || '',
   });
-
-  const isConfigHidden = !!(import.meta.env.VITE_API_KEY);
 
   const [birthDate, setBirthDate] = useState<string>('');
   const [birthTime, setBirthTime] = useState<string>('12:00');
@@ -196,7 +194,6 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           </div>
         )}
 
-        {!isConfigHidden && (
           <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
             <div className="flex items-center gap-2 mb-3 text-gray-700 text-sm font-bold">
               <Settings className="w-4 h-4" />
@@ -238,7 +235,6 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
               </div>
             </div>
           </div>
-        )}
 
         <button
           type="submit"

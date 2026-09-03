@@ -85,6 +85,14 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     throw new Error("請在表單中填寫有效的 API Base URL");
   }
 
+  // 驗證傳輸協議安全：遠端端點必須使用 HTTPS（本地測試允許 http://localhost / http://127.0.0.1）
+  const isLocalEndpoint = cleanBaseUrl.startsWith('http://localhost') || 
+                          cleanBaseUrl.startsWith('http://127.0.0.1') ||
+                          cleanBaseUrl.startsWith('http://[::1]');
+  if (!cleanBaseUrl.startsWith('https://') && !isLocalEndpoint) {
+    throw new Error("API Base URL 必須使用安全的 HTTPS 協議（本地測試可使用 http://localhost）");
+  }
+
   const genderStr = input.gender === Gender.MALE ? '男 (乾造)' : '女 (坤造)';
   const startAgeInt = parseInt(input.startAge) || 1;
 

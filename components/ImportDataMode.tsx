@@ -23,18 +23,51 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
         try {
             const data = JSON.parse(extractJson(jsonInput));
 
-            // 校驗數據
+            // 校驗數據結構與完整性
             if (!data.chartPoints || !Array.isArray(data.chartPoints)) {
                 throw new Error('數據格式不正確：缺少 chartPoints 數組');
             }
 
             if (data.chartPoints.length < 10) {
-                throw new Error('數據不完整：chartPoints 數量太少');
+                throw new Error('數據不完整：chartPoints 數量太少（至少需要 10 個年份點）');
             }
+
+            if (data.chartPoints.length > 200) {
+                throw new Error('數據量過大：chartPoints 數量不能超過 200 個年份點');
+            }
+
+            // 深度校驗數值合法性，防止異常數據導致圖表繪製崩潰
+            const sanitizedChartPoints = data.chartPoints.map((item: any, idx: number) => {
+                if (!item || typeof item !== 'object') {
+                    throw new Error(`第 ${idx + 1} 個數據點格式無效`);
+                }
+                const open = Number(item.open);
+                const close = Number(item.close);
+                const high = Number(item.high);
+                const low = Number(item.low);
+                const score = Number(item.score);
+
+                if (!Number.isFinite(open) || !Number.isFinite(close) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(score)) {
+                    throw new Error(`第 ${idx + 1} 個數據點包含無效數值（open/close/high/low/score 必須為有效數字）`);
+                }
+
+                return {
+                    age: Number(item.age) || (idx + 1),
+                    year: Number(item.year) || (2024 + idx),
+                    ganZhi: String(item.ganZhi || ''),
+                    daYun: String(item.daYun || ''),
+                    open,
+                    close,
+                    high,
+                    low,
+                    score,
+                    reason: String(item.reason || '')
+                };
+            });
 
             // 轉換爲應用所需格式
             const result: LifeDestinyResult = {
-                chartData: data.chartPoints,
+                chartData: sanitizedChartPoints,
                 analysis: {
                     bazi: data.bazi || [],
                     summary: data.summary || "無摘要",
