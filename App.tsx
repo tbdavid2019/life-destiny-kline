@@ -6,7 +6,7 @@ import BaziForm from './components/BaziForm';
 import StreamYearsViewer from './components/StreamYearsViewer';
 import { generateLifeAnalysis } from './services/geminiService';
 import { compressData, decompressData } from './services/shareUtils';
-import { LifeDestinyResult, UserInput } from './types';
+import { LifeDestinyResult, UserInput, Gender } from './types';
 import {
   Sparkles,
   AlertCircle,
@@ -21,7 +21,48 @@ import {
   ArrowLeft,
   Eye,
   Check,
+  LineChart,
+  Table as TableIcon,
+  Compass,
+  PlayCircle,
+  ScrollText,
 } from 'lucide-react';
+
+export type AppRoute =
+  | 'new'
+  | 'import'
+  | 'demo'
+  | 'result'
+  | 'kline'
+  | 'years'
+  | 'bazi'
+  | 'analysis';
+
+export const parseHashRoute = (hash: string): { route: AppRoute; sharePayload?: string } => {
+  const cleanHash = (hash || '').replace(/^#\/?/, '').trim();
+
+  // 1. Share or Data payload
+  if (cleanHash.startsWith('share=') || cleanHash.startsWith('data=')) {
+    return { route: 'result', sharePayload: cleanHash.slice(cleanHash.indexOf('=') + 1) };
+  }
+
+  if (cleanHash.includes('share=')) {
+    const payload = cleanHash.split('share=')[1]?.split('&')[0];
+    return { route: 'result', sharePayload: payload };
+  }
+
+  const mainPath = cleanHash.split('?')[0].toLowerCase();
+  if (mainPath === 'import' || mainPath === 'manual') return { route: 'import' };
+  if (mainPath === 'demo' || mainPath === 'example') return { route: 'demo' };
+  if (mainPath === 'kline' || mainPath === 'chart') return { route: 'kline' };
+  if (mainPath === 'years' || mainPath === 'stream' || mainPath === 'table') return { route: 'years' };
+  if (mainPath === 'bazi' || mainPath === 'meta' || mainPath === 'pillars') return { route: 'bazi' };
+  if (mainPath === 'analysis' || mainPath === 'report') return { route: 'analysis' };
+  if (mainPath === 'result' || mainPath === 'overview') return { route: 'result' };
+  if (mainPath === 'new' || mainPath === 'form' || mainPath === '') return { route: 'new' };
+
+  return { route: 'new' };
+};
 
 // Safe storage wrapper to prevent crashes in private browsing or constrained environments
 const safeStorage = {
@@ -56,12 +97,116 @@ const App: React.FC = () => {
   const [inputMode, setInputMode] = useState<'ai' | 'manual'>('ai');
   const [isEditing, setIsEditing] = useState(false);
   const [shareToast, setShareToast] = useState<string | null>(null);
+  const [currentRoute, setCurrentRoute] = useState<AppRoute>('new');
 
   // Load API config and saved results on mount
   const [initialConfig, setInitialConfig] = useState<Partial<UserInput>>({});
 
+  // 載入本地範例演示數據
+  const loadDemoData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const demoResult = await generateLifeAnalysis({
+        gender: Gender.MALE,
+        birthYear: '1981',
+        yearPillar: '辛酉',
+        monthPillar: '戊戌',
+        dayPillar: '丙寅',
+        hourPillar: '甲午',
+        startAge: '8',
+        firstDaYun: '庚寅',
+        name: '範例演示用戶',
+        apiKey: 'demo',
+        modelName: 'gemini-2.5-flash',
+        apiBaseUrl: '',
+      });
+      setResult(demoResult);
+      setUserName('範例演示用戶');
+      setIsEditing(false);
+      safeStorage.setItem('lifekline_saved_result', JSON.stringify(demoResult));
+      safeStorage.setItem('lifekline_user_name', '範例演示用戶');
+      return demoResult;
+    } catch (err: any) {
+      setError('載入範例數據失敗：' + (err.message || '未知錯誤'));
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 路由直達跳轉器（更新 URL Hash 並觸發相應視圖/錨點）
+  const navigateTo = (route: AppRoute, replace = false) => {
+    const targetHash = `#/${route}`;
+    if (window.location.hash !== targetHash) {
+      if (replace) {
+        window.history.replaceState(null, '', targetHash);
+        handleRouteChange(route);
+      } else {
+        window.location.hash = targetHash;
+      }
+    } else {
+      handleRouteChange(route);
+    }
+  };
+
+  // 處理特定路由狀態與視圖切換
+  const handleRouteChange = async (route: AppRoute) => {
+    setCurrentRoute(route);
+
+    if (route === 'demo') {
+      if (!result || userName !== '範例演示用戶') {
+        await loadDemoData();
+      } else {
+        setIsEditing(false);
+      }
+      return;
+    }
+
+    if (route === 'import') {
+      setInputMode('manual');
+      setIsEditing(true);
+      return;
+    }
+
+    if (route === 'new') {
+      setInputMode('ai');
+      setIsEditing(true);
+      return;
+    }
+
+    // 命盤各區塊直達 (kline, years, bazi, analysis, result)
+    if (['result', 'kline', 'years', 'bazi', 'analysis'].includes(route)) {
+      let activeResult = result;
+      if (!activeResult) {
+        // 若當前無命盤數據且直接拜訪子路由，自動載入範例演示，讓訪客立即直達
+        activeResult = await loadDemoData();
+      } else {
+        setIsEditing(false);
+      }
+
+      if (activeResult) {
+        const sectionIdMap: Record<string, string> = {
+          kline: 'kline-section',
+          years: 'stream-years-section',
+          bazi: 'bazi-meta-section',
+          analysis: 'analysis-cards-section',
+        };
+        const targetId = sectionIdMap[route];
+        if (targetId) {
+          setTimeout(() => {
+            const el = document.getElementById(targetId);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 120);
+        }
+      }
+    }
+  };
+
   useEffect(() => {
-    // 1. Restore API config
+    // 1. 恢復 API 配置
     const savedKey = safeStorage.getItem('lifekline_api_key');
     const savedUrl = safeStorage.getItem('lifekline_api_url');
     const savedModel = safeStorage.getItem('lifekline_model');
@@ -84,47 +229,74 @@ const App: React.FC = () => {
       });
     }
 
-    // 2. Check URL Hash for shared data first
-    const initFromUrlOrStorage = async () => {
+    // 2. 路由監聽與初始化
+    const syncFromHash = async () => {
       const hash = window.location.hash;
-      let loadedFromHash = false;
 
-      if (hash && (hash.startsWith('#data=') || hash.startsWith('#share='))) {
-        const payload = hash.slice(hash.indexOf('=') + 1);
+      // 優先檢查分享數據
+      if (hash.startsWith('#data=') || hash.startsWith('#share=') || hash.includes('share=')) {
+        const payload = hash.includes('share=')
+          ? hash.split('share=')[1]?.split('&')[0]
+          : hash.slice(hash.indexOf('=') + 1);
         if (payload) {
-          const shared = await decompressData(payload);
-          if (shared && shared.result && shared.result.chartData) {
-            setResult(shared.result);
-            if (shared.userName) setUserName(shared.userName);
-            loadedFromHash = true;
-            // Also persist to localStorage
-            safeStorage.setItem('lifekline_saved_result', JSON.stringify(shared.result));
-            if (shared.userName) {
-              safeStorage.setItem('lifekline_user_name', shared.userName);
+          try {
+            const shared = await decompressData(payload);
+            if (shared && shared.result && shared.result.chartData) {
+              setResult(shared.result);
+              if (shared.userName) setUserName(shared.userName);
+              setIsEditing(false);
+              safeStorage.setItem('lifekline_saved_result', JSON.stringify(shared.result));
+              if (shared.userName) {
+                safeStorage.setItem('lifekline_user_name', shared.userName);
+              }
+              setCurrentRoute('result');
+              return;
             }
+          } catch (e) {
+            console.error('Failed to parse shared data from hash', e);
           }
         }
       }
 
-      // 3. Fallback to localStorage if no URL hash
-      if (!loadedFromHash) {
+      // 檢查 localStorage 既有已保存命盤
+      const savedResultStr = safeStorage.getItem('lifekline_saved_result');
+      const savedUserName = safeStorage.getItem('lifekline_user_name');
+      let loadedSaved = false;
+      if (savedResultStr) {
         try {
-          const savedResultStr = safeStorage.getItem('lifekline_saved_result');
-          const savedUserName = safeStorage.getItem('lifekline_user_name');
-          if (savedResultStr) {
-            const parsed = JSON.parse(savedResultStr);
-            if (parsed && parsed.chartData && parsed.analysis) {
-              setResult(parsed);
-              if (savedUserName) setUserName(savedUserName);
-            }
+          const parsed = JSON.parse(savedResultStr);
+          if (parsed && parsed.chartData && parsed.analysis) {
+            setResult(parsed);
+            if (savedUserName) setUserName(savedUserName);
+            loadedSaved = true;
           }
         } catch (e) {
           console.warn('Failed to parse saved result from localStorage:', e);
         }
       }
+
+      const { route } = parseHashRoute(hash);
+
+      if (hash === '' || hash === '#' || hash === '#/') {
+        if (loadedSaved) {
+          setIsEditing(false);
+          setCurrentRoute('result');
+          window.history.replaceState(null, '', '#/result');
+        } else {
+          setIsEditing(true);
+          setCurrentRoute('new');
+        }
+      } else {
+        await handleRouteChange(route);
+      }
     };
 
-    initFromUrlOrStorage();
+    window.addEventListener('hashchange', syncFromHash);
+    syncFromHash();
+
+    return () => {
+      window.removeEventListener('hashchange', syncFromHash);
+    };
   }, []);
 
   const handleBaziSubmit = async (data: UserInput) => {
@@ -150,6 +322,8 @@ const App: React.FC = () => {
       // Persist to localStorage
       safeStorage.setItem('lifekline_saved_result', JSON.stringify(analysisResult));
       safeStorage.setItem('lifekline_user_name', data.name || '');
+
+      navigateTo('result');
     } catch (err: any) {
       setError(err.message || '分析失敗，請檢查 API 金鑰或網路連線');
     } finally {
@@ -162,6 +336,7 @@ const App: React.FC = () => {
     setResult(data);
     setIsEditing(false);
     safeStorage.setItem('lifekline_saved_result', JSON.stringify(data));
+    navigateTo('result');
   };
 
   // 生成並複製包含命盤數據的分享網址 (持久存儲至 URL Hash)
@@ -175,7 +350,7 @@ const App: React.FC = () => {
       });
 
       const url = new URL(window.location.href);
-      url.hash = `share=${compressedHash}`;
+      url.hash = `#/share=${compressedHash}`;
       const shareUrl = url.toString();
 
       await navigator.clipboard.writeText(shareUrl);
@@ -201,11 +376,10 @@ const App: React.FC = () => {
     if (window.confirm('確定要清空已保存的命盤數據嗎？')) {
       setResult(null);
       setUserName('');
-      setIsEditing(false);
+      setIsEditing(true);
       safeStorage.removeItem('lifekline_saved_result');
       safeStorage.removeItem('lifekline_user_name');
-      // Remove hash from URL
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      navigateTo('new');
     }
   };
 
@@ -436,20 +610,130 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center">
-      {/* 頂部導航欄 */}
-      <header className="w-full bg-white border-b border-slate-200 py-4 sm:py-5 sticky top-0 z-50 no-print shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-950 text-white p-2.5 rounded-xl shadow-sm">
-              <Sparkles className="w-6 h-6 text-amber-300" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-serif-sc font-bold text-slate-950 tracking-wide">888人生K線</h1>
-              <p className="text-sm text-slate-700 font-semibold uppercase tracking-wider">
-                888 Life Destiny K-Line
-              </p>
-            </div>
+      {/* 頂部導航欄（具備完整 SPA 路由直達功能） */}
+      <header className="w-full bg-white/95 backdrop-blur-md border-b border-slate-200 py-3 sm:py-3.5 sticky top-0 z-50 no-print shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center justify-between w-full md:w-auto">
+            <a
+              href="#/new"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('new');
+              }}
+              className="flex items-center gap-2.5 sm:gap-3 group cursor-pointer focus:outline-none"
+            >
+              <div className="bg-slate-950 text-white p-2 sm:p-2.5 rounded-xl shadow-sm group-hover:scale-105 transition-transform">
+                <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-300" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-serif-sc font-bold text-slate-950 tracking-wide">888人生K線</h1>
+                <p className="text-[11px] sm:text-xs text-slate-600 font-semibold uppercase tracking-wider">
+                  888 Life Destiny K-Line
+                </p>
+              </div>
+            </a>
           </div>
+
+          {/* 路由直達功能選單 */}
+          <nav className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto py-1 text-sm font-bold no-scrollbar w-full md:w-auto">
+            <button
+              type="button"
+              onClick={() => navigateTo('new')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition flex-shrink-0 ${
+                currentRoute === 'new' && (!result || isEditing)
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>AI 排盤</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigateTo('import')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition flex-shrink-0 ${
+                currentRoute === 'import' && (!result || isEditing)
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+              }`}
+            >
+              <MessageSquare className="w-4 h-4 text-indigo-500" />
+              <span>手動導入</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => navigateTo('demo')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition flex-shrink-0 ${
+                currentRoute === 'demo'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80'
+              }`}
+            >
+              <PlayCircle className="w-4 h-4 text-amber-600" />
+              <span>範例展示</span>
+            </button>
+
+            {/* 結果頁面時的直達錨點導航 */}
+            {result && !isEditing && (
+              <>
+                <span className="w-px h-5 bg-slate-200 mx-1 hidden sm:block flex-shrink-0" />
+
+                <button
+                  type="button"
+                  onClick={() => navigateTo('kline')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
+                    currentRoute === 'kline'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  <LineChart className="w-4 h-4 text-emerald-600" />
+                  <span>K線圖</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigateTo('years')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
+                    currentRoute === 'years'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  <TableIcon className="w-4 h-4 text-indigo-600" />
+                  <span>流年詳批</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigateTo('bazi')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
+                    currentRoute === 'bazi'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  <Compass className="w-4 h-4 text-amber-600" />
+                  <span>雙盤底蘊</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigateTo('analysis')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
+                    currentRoute === 'analysis'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  <ScrollText className="w-4 h-4 text-teal-600" />
+                  <span>命理分析</span>
+                </button>
+              </>
+            )}
+          </nav>
         </div>
       </header>
 
@@ -474,7 +758,7 @@ const App: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => navigateTo('result')}
                   className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm sm:text-base font-bold transition flex items-center gap-2 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <Eye className="w-4 h-4" />
@@ -493,30 +777,41 @@ const App: React.FC = () => {
                 將您的一生運勢繪製成類似股票行情的高清 K 線圖與百年流年詳批。
               </p>
 
-              <div className="flex p-1.5 bg-slate-200 rounded-xl mb-6 w-72 sm:w-80 border border-slate-300">
+              {/* 路由直達功能切換頁籤 */}
+              <div className="flex p-1.5 bg-slate-200 rounded-xl mb-6 w-full max-w-md border border-slate-300">
                 <button
-                  onClick={() => setInputMode('ai')}
-                  aria-pressed={inputMode === 'ai'}
+                  type="button"
+                  onClick={() => navigateTo('new')}
+                  aria-pressed={inputMode === 'ai' && (!result || isEditing)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
-                    inputMode === 'ai'
+                    inputMode === 'ai' && (!result || isEditing)
                       ? 'bg-white text-indigo-950 shadow-sm'
                       : 'text-slate-700 hover:text-slate-950'
                   }`}
                 >
-                  <Cpu className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span>AI 自動推演</span>
+                  <Cpu className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
+                  <span>AI 自動排盤</span>
                 </button>
                 <button
-                  onClick={() => setInputMode('manual')}
-                  aria-pressed={inputMode === 'manual'}
+                  type="button"
+                  onClick={() => navigateTo('import')}
+                  aria-pressed={inputMode === 'manual' && (!result || isEditing)}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
-                    inputMode === 'manual'
+                    inputMode === 'manual' && (!result || isEditing)
                       ? 'bg-white text-indigo-950 shadow-sm'
                       : 'text-slate-700 hover:text-slate-950'
                   }`}
                 >
-                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                   <span>手動導入</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateTo('demo')}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all text-amber-900 hover:text-amber-950 hover:bg-amber-100/70"
+                >
+                  <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
+                  <span>範例展示</span>
                 </button>
               </div>
             </div>
@@ -527,7 +822,7 @@ const App: React.FC = () => {
               <div className="flex flex-col items-center gap-6 w-full">
                 <ImportDataMode onDataImport={handleDataImport} />
                 <p className="text-sm text-slate-700 font-medium">
-                  粘貼 AI 返回的 JSON 數據以生成完整 K 線與百年詳批
+                  粘貼 AI 生成的 JSON 數據以生成完整 K 線與百年詳批
                 </p>
               </div>
             )}
@@ -560,38 +855,37 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleCopyShareLink}
-                  title="生成並複製包含命盤數據的分享網址"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 text-indigo-950 border border-indigo-300 rounded-xl hover:bg-indigo-100 transition font-bold text-sm sm:text-base focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
-                  <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span>複製分享連結</span>
+                  <Share2 className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-700" />
+                  <span>分享命盤</span>
                 </button>
 
                 {/* 導出 JSON */}
                 <button
                   type="button"
                   onClick={handleExportJson}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 text-white rounded-xl hover:bg-emerald-800 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-xl hover:bg-slate-100 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <FileDown className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>導出 JSON</span>
                 </button>
 
-                {/* 保存 PDF */}
+                {/* 列印報表 */}
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-slate-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-xl hover:bg-slate-100 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span>列印 / 保存 PDF</span>
+                  <span>列印報表</span>
                 </button>
 
-                {/* 保存 HTML 網頁 */}
+                {/* 保存離線 HTML */}
                 <button
                   type="button"
                   onClick={handleSaveHtml}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-700 text-white rounded-xl hover:bg-indigo-800 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-xl hover:bg-slate-100 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <Download className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>保存離線網頁</span>
@@ -600,7 +894,7 @@ const App: React.FC = () => {
                 {/* 返回修改 (保留現有結果) */}
                 <button
                   type="button"
-                  onClick={() => setIsEditing(true)}
+                  onClick={() => navigateTo('new')}
                   className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-xl hover:bg-slate-100 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -620,7 +914,7 @@ const App: React.FC = () => {
             </div>
 
             {/* 走勢圖區塊 */}
-            <section className="space-y-4 break-inside-avoid">
+            <section id="kline-section" className="space-y-4 break-inside-avoid scroll-mt-24">
               <div className="flex flex-col gap-2">
                 <h3 className="text-2xl font-bold text-slate-950 flex items-center gap-2.5 font-serif-sc">
                   <span className="w-1.5 h-6 bg-indigo-600 rounded-full" aria-hidden="true" />
@@ -645,10 +939,12 @@ const App: React.FC = () => {
             </section>
 
             {/* 需求 1：幾歲幾歲的流年詳批內容直接在前端完整展示 */}
-            <StreamYearsViewer data={result.chartData} />
+            <section id="stream-years-section" className="scroll-mt-24">
+              <StreamYearsViewer data={result.chartData} />
+            </section>
 
             {/* 命盤總評與各項分析卡片（包含正統子平與紫微雙盤底蘊元盤） */}
-            <section id="analysis-result-container">
+            <section id="analysis-result-container" className="scroll-mt-24">
               <AnalysisResult analysis={result.analysis} baziMeta={result.baziMeta} />
             </section>
 

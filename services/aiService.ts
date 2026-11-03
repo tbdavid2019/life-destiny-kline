@@ -2,6 +2,7 @@ import { UserInput, LifeDestinyResult, Gender } from "../types";
 import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 import { signAwsRequest } from "./awsSigV4";
 import { getDefaultBaseUrl } from "./modelService";
+import defaultMockData from "../mock-data.json";
 import {
   calculateBazi,
   BaziCalculationResult,
@@ -371,7 +372,15 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
   // 本地演示模式：當 API Key 爲 'demo' 時，使用預生成的本地數據
   if (cleanApiKey.toLowerCase() === 'demo') {
     console.log('🎯 使用本地演示模式');
-    const mockData = await fetch('/mock-data.json').then(r => r.json());
+    let mockData: any = defaultMockData;
+    try {
+      const res = await fetch('./mock-data.json');
+      if (res.ok) {
+        mockData = await res.json();
+      }
+    } catch {
+      // 離線或相對路徑例外時使用預打包數據
+    }
     const demoBaziMeta = input.baziMeta || calculateBazi(new Date(1981, 9, 15, 12, 0), 1);
     return {
       chartData: mockData.chartPoints,

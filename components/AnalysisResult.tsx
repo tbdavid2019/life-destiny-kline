@@ -112,7 +112,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, baziMeta }) =
     <div className="w-full space-y-8 animate-fade-in-up">
       {/* 子平八字與紫微斗數 雙盤命理底蘊元盤 */}
       {baziMeta ? (
-        <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-amber-50 p-6 md:p-8 rounded-3xl shadow-xl border border-amber-500/30 space-y-6">
+        <div id="bazi-meta-section" className="scroll-mt-24 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-amber-50 p-6 md:p-8 rounded-3xl shadow-xl border border-amber-500/30 space-y-6">
           {/* 標題與核心格局徽章 */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-500/20 pb-4">
             <div className="flex items-center gap-3">
@@ -304,7 +304,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, baziMeta }) =
       </div>
 
       {/* Grid for categorical analysis with Scores */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7">
+      <div id="analysis-cards-section" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-7 scroll-mt-24">
         {/* Crypto Analysis */}
         <Card
           title="投資理財運勢"
