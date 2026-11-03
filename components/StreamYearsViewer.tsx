@@ -26,7 +26,7 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
   const [selectedDaYun, setSelectedDaYun] = useState<string>('all');
   const [trendFilter, setTrendFilter] = useState<TrendFilter>('all');
   const [searchKeyword, setSearchKeyword] = useState<string>('');
-  const [viewMode, setViewMode] = useState<ViewMode>('card');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
 
   // Identify Global Peak Year (Highest high score)
   const peakYearItem = useMemo(() => {
@@ -122,21 +122,8 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
           </p>
         </div>
 
-        {/* 卡片模式 / 表格模式 切換按鈕 */}
+        {/* 視圖切換按鈕：預設清爽表格視圖 */}
         <div className="flex items-center gap-2 self-start md:self-auto bg-slate-100 p-1.5 rounded-xl border border-slate-200 no-print">
-          <button
-            type="button"
-            onClick={() => setViewMode('card')}
-            aria-pressed={viewMode === 'card'}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm sm:text-base font-bold transition focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
-              viewMode === 'card'
-                ? 'bg-white text-indigo-950 shadow-sm border border-slate-200'
-                : 'text-slate-700 hover:text-slate-950'
-            }`}
-          >
-            <LayoutGrid className="w-4 h-4" />
-            <span>卡片詳析視圖</span>
-          </button>
           <button
             type="button"
             onClick={() => setViewMode('table')}
@@ -149,6 +136,19 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
           >
             <TableIcon className="w-4 h-4" />
             <span>清爽表格視圖</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('card')}
+            aria-pressed={viewMode === 'card'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm sm:text-base font-bold transition focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
+              viewMode === 'card'
+                ? 'bg-white text-indigo-950 shadow-sm border border-slate-200'
+                : 'text-slate-700 hover:text-slate-950'
+            }`}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            <span>卡片詳析視圖</span>
           </button>
         </div>
       </div>
@@ -490,18 +490,17 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
           </div>
         ) : (
           /* ============================================================ */
-          /* 2. 清爽全覽表格視圖 (字體大、內邊距充足、繁簡清晰) */
+          /* 2. 清爽全覽表格視圖 (字體大、內邊距充足、與離線版規格統一) */
           /* ============================================================ */
-          <div className="overflow-x-auto rounded-2xl border border-slate-300">
-            <table className="w-full text-left border-collapse text-base">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm bg-white">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-slate-100 text-slate-950 font-bold border-b border-slate-300">
-                  <th className="p-4 border-r border-slate-200 text-center w-24 text-base">年齡</th>
-                  <th className="p-4 border-r border-slate-200 text-center w-36 text-base">流年</th>
-                  <th className="p-4 border-r border-slate-200 text-center w-36 text-base">大運</th>
-                  <th className="p-4 border-r border-slate-200 text-center w-28 text-base">走勢</th>
-                  <th className="p-4 border-r border-slate-200 text-center w-28 text-base">綜合分</th>
-                  <th className="p-4 text-base">流年運勢批斷與行事建議</th>
+                <tr className="bg-slate-100 text-slate-900 text-base font-bold border-b border-slate-200 uppercase tracking-wider">
+                  <th className="p-3.5 border-r border-slate-200 text-center w-20">年齡</th>
+                  <th className="p-3.5 border-r border-slate-200 text-center w-32">流年</th>
+                  <th className="p-3.5 border-r border-slate-200 text-center w-28">大運</th>
+                  <th className="p-3.5 border-r border-slate-200 text-center w-24">評分</th>
+                  <th className="p-3.5 text-base">運勢批斷與建議</th>
                 </tr>
               </thead>
               <tbody>
@@ -519,50 +518,34 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
                       }`}
                     >
                       {/* 年齡 */}
-                      <td className="p-4 border-r border-slate-200 text-center font-bold text-slate-950 text-base">
-                        {item.age} 歲
+                      <td className="p-3.5 border-r border-slate-200 text-center font-mono font-bold text-base text-slate-900 whitespace-nowrap">
+                        {item.age}歲
                       </td>
 
                       {/* 流年年份與干支 */}
-                      <td className="p-4 border-r border-slate-200 text-center">
-                        <div className="font-extrabold text-slate-950 font-serif-sc text-lg">
-                          {item.year} 年
-                        </div>
-                        <div className="text-base font-bold text-indigo-950">
-                          {item.ganZhi}
-                        </div>
+                      <td className="p-3.5 border-r border-slate-200 text-center font-bold text-base text-slate-950 whitespace-nowrap">
+                        <span>{item.year} {item.ganZhi}</span>
                         {isPeak && (
-                          <span className="inline-flex items-center gap-1 text-sm font-black text-amber-950 bg-amber-300 px-2.5 py-0.5 rounded-md mt-1">
-                            <Trophy className="w-3.5 h-3.5" /> 巔峰
+                          <span className="block text-xs font-black text-amber-950 bg-amber-300 px-2 py-0.5 rounded mt-1 shadow-sm">
+                            ★ 巔峰
                           </span>
                         )}
                       </td>
 
                       {/* 大運 */}
-                      <td className="p-4 border-r border-slate-200 text-center font-bold text-slate-900 text-base">
+                      <td className="p-3.5 border-r border-slate-200 text-center text-base text-slate-800 font-medium whitespace-nowrap">
                         {item.daYun || '-'}
                       </td>
 
-                      {/* 走勢標籤 */}
-                      <td className="p-4 border-r border-slate-200 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-lg text-sm font-black border ${
-                            isUp
-                              ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
-                              : 'bg-rose-100 text-rose-950 border-rose-300'
-                          }`}
-                        >
-                          {isUp ? '吉 ▲' : '兇 ▼'}
+                      {/* 評分與走勢 */}
+                      <td className="p-3.5 border-r border-slate-200 text-center font-mono font-extrabold text-base whitespace-nowrap">
+                        <span className={isUp ? 'text-emerald-700' : 'text-rose-700'}>
+                          {item.score} <span className="text-sm font-bold">{isUp ? '▲' : '▼'}</span>
                         </span>
                       </td>
 
-                      {/* 評分 */}
-                      <td className="p-4 border-r border-slate-200 text-center font-mono font-black text-slate-950 text-lg">
-                        {item.score}
-                      </td>
-
-                      {/* 批斷內容 (字體放大到 16px，行距放寬，中文閱讀極佳) */}
-                      <td className="p-4 text-slate-900 leading-relaxed text-base text-left">
+                      {/* 批斷內容 (字體 16px，行距放寬，中文閱讀極佳) */}
+                      <td className="p-3.5 text-base text-slate-900 text-justify leading-relaxed font-normal">
                         {item.reason}
                       </td>
                     </tr>

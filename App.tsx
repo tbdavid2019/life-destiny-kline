@@ -311,7 +311,7 @@ const App: React.FC = () => {
              <div class="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
              <h3 class="text-2xl font-bold text-gray-900 font-serif-sc">流年詳批全表 (1-100歲)</h3>
            </div>
-           <span class="text-sm text-gray-600 font-medium">(離線完整報告，包含百年每歲詳情)</span>
+           <span class="text-sm text-gray-600 font-medium">(百年每歲流年詳批全覽)</span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
@@ -353,7 +353,37 @@ const App: React.FC = () => {
     .font-serif-sc {
       font-family: "Noto Serif TC", "Songti TC", "STSong", "PMingLiU", Georgia, serif;
     }
-    svg { width: 100% !important; height: auto !important; }
+    /* 圖表 SVG 自適應寬度 */
+    .chart-container svg,
+    svg.recharts-surface {
+      width: 100% !important;
+      height: auto !important;
+      max-height: 500px;
+    }
+    /* 修正 Lucide SVG 圖標在離線導出 HTML 中被放大變形的問題，嚴格限制常規圖標尺寸 */
+    svg.lucide,
+    svg[class*="lucide"],
+    svg:not(.recharts-surface) {
+      display: inline-block !important;
+      vertical-align: middle !important;
+      flex-shrink: 0 !important;
+      max-width: 1.5rem !important;
+      max-height: 1.5rem !important;
+    }
+    svg.w-3, .w-3 svg { width: 0.75rem !important; height: 0.75rem !important; }
+    svg.w-3\\.5, .w-3\\.5 svg { width: 0.875rem !important; height: 0.875rem !important; }
+    svg.w-4, .w-4 svg { width: 1rem !important; height: 1rem !important; }
+    svg.w-5, .w-5 svg { width: 1.25rem !important; height: 1.25rem !important; }
+    svg.w-6, .w-6 svg { width: 1.5rem !important; height: 1.5rem !important; }
+    svg.w-7, .w-7 svg { width: 1.75rem !important; height: 1.75rem !important; }
+    svg.w-8, .w-8 svg { width: 2rem !important; height: 2rem !important; }
+    svg.h-3, .h-3 svg { height: 0.75rem !important; }
+    svg.h-3\\.5, .h-3\\.5 svg { height: 0.875rem !important; }
+    svg.h-4, .h-4 svg { height: 1rem !important; }
+    svg.h-5, .h-5 svg { height: 1.25rem !important; }
+    svg.h-6, .h-6 svg { height: 1.5rem !important; }
+    svg.h-7, .h-7 svg { height: 1.75rem !important; }
+    svg.h-8, .h-8 svg { height: 2rem !important; }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen p-4 md:p-12 text-slate-900">
@@ -367,7 +397,7 @@ const App: React.FC = () => {
         <div class="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
         <h3 class="text-2xl font-bold text-slate-950 font-serif-sc">流年大運走勢圖</h3>
       </div>
-      <div class="w-full overflow-hidden flex justify-center py-4">
+      <div class="chart-container w-full overflow-hidden flex justify-center py-4">
         ${chartSvg}
       </div>
       <p class="text-center text-sm text-slate-600 mt-3 font-medium">注：圖表K線顏色根據運勢漲跌繪製，數值越高代表運勢越強。</p>
