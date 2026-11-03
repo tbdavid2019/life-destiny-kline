@@ -405,7 +405,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center">
       {/* 頂部導航欄 */}
-      <header className="w-full bg-white border-b border-slate-200 py-4 sm:py-5 sticky top-0 z-50 no-print shadow-2xs">
+      <header className="w-full bg-white border-b border-slate-200 py-4 sm:py-5 sticky top-0 z-50 no-print shadow-sm">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-slate-950 text-white p-2.5 rounded-xl shadow-sm">
@@ -447,7 +447,7 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm sm:text-base font-bold transition flex items-center gap-2 shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm sm:text-base font-bold transition flex items-center gap-2 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
                   <Eye className="w-4 h-4" />
                   <span>查看命盤結果</span>

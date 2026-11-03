@@ -10,6 +10,7 @@ import {
   Filter,
   X,
   Compass,
+  ChevronDown,
 } from 'lucide-react';
 
 interface StreamYearsViewerProps {
@@ -258,7 +259,7 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
                 id="stream-years-dayun-filter"
                 value={selectedDaYun}
                 onChange={(e) => setSelectedDaYun(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl text-base text-slate-900 bg-white focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:border-transparent outline-none appearance-none cursor-pointer"
+                className="w-full pl-10 pr-10 py-3 border border-slate-300 rounded-xl text-base text-slate-900 bg-white focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:border-transparent outline-none appearance-none cursor-pointer"
               >
                 <option value="all">全部大運</option>
                 {availableDaYunList.map((dy) => (
@@ -268,6 +269,7 @@ export const StreamYearsViewer: React.FC<StreamYearsViewerProps> = ({ data = [] 
                 ))}
               </select>
               <Compass className="w-5 h-5 text-slate-500 absolute left-3 top-3.5 pointer-events-none" />
+              <ChevronDown className="w-5 h-5 text-slate-500 absolute right-3 top-3.5 pointer-events-none" />
             </div>
           </div>
 

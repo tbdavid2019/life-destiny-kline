@@ -22,7 +22,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     const data = payload[0].payload as KLinePoint;
     const isUp = data.close >= data.open;
     return (
-      <div className="bg-white/98 backdrop-blur-md p-6 rounded-2xl shadow-2xl border border-slate-300 z-50 w-[340px] md:w-[480px]">
+      <div className="bg-white/98 backdrop-blur-md p-6 rounded-2xl shadow-2xl border border-slate-300 z-50 w-[340px] md:w-[480px] max-w-[calc(100vw-32px)]">
         {/* Header */}
         <div className="flex justify-between items-start mb-4 border-b border-slate-200 pb-3">
           <div>
