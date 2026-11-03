@@ -40,11 +40,19 @@ const COMMON_AWS_REGIONS = [
   { id: 'eu-west-1', name: 'Europe (Ireland) eu-west-1' },
 ];
 
+const sanitizeUserName = (rawName?: string): string => {
+  if (!rawName) return '';
+  if (rawName === '範例演示用戶' || rawName.includes('範例演示用戶') || rawName.includes('演示用戶')) {
+    return '';
+  }
+  return rawName;
+};
+
 const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData }) => {
   const initialProvider: AIProvider = (initialData?.provider as AIProvider) || 'gemini';
 
   const [formData, setFormData] = useState<UserInput>({
-    name: initialData?.name || '',
+    name: sanitizeUserName(initialData?.name),
     gender: initialData?.gender || Gender.MALE,
     birthYear: initialData?.birthYear || '',
     birthDate: initialData?.birthDate || '',
@@ -156,6 +164,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
       setFormData((prev) => ({
         ...prev,
         ...initialData,
+        name: sanitizeUserName(initialData.name ?? prev.name),
         provider: (initialData.provider as AIProvider) || prev.provider,
         apiBaseUrl:
           initialData.apiBaseUrl ||
@@ -196,7 +205,8 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const sanitizedVal = name === 'name' ? sanitizeUserName(value) : value;
+    setFormData((prev) => ({ ...prev, [name]: sanitizedVal }));
     if (name in formErrors) {
       setFormErrors((prev) => ({ ...prev, [name]: undefined }));
     }
@@ -319,16 +329,17 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label htmlFor="bazi-user-name" className="block text-base font-bold text-slate-900 mb-2">
-              姓名 (可選)
+              姓名 (選填)
             </label>
             <input
               id="bazi-user-name"
               type="text"
               name="name"
-              value={formData.name}
+              autoComplete="off"
+              value={sanitizeUserName(formData.name)}
               onChange={handleChange}
               className="w-full px-4 py-3 border border-slate-300 rounded-xl text-base text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:border-transparent outline-none bg-white placeholder:text-slate-400"
-              placeholder="請輸入姓名"
+              placeholder="請輸入姓名 (選填)"
             />
           </div>
 

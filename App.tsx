@@ -1,9 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import LifeKLineChart from './components/LifeKLineChart';
 import AnalysisResult from './components/AnalysisResult';
 import ImportDataMode from './components/ImportDataMode';
 import BaziForm from './components/BaziForm';
 import StreamYearsViewer from './components/StreamYearsViewer';
+import BirthProfileCard from './components/BirthProfileCard';
 import { generateLifeAnalysis } from './services/geminiService';
 import { compressData, decompressData } from './services/shareUtils';
 import { LifeDestinyResult, UserInput, Gender } from './types';
@@ -25,12 +26,14 @@ import {
   Table as TableIcon,
   Compass,
   ScrollText,
+  User,
 } from 'lucide-react';
 
 export type AppRoute =
   | 'new'
   | 'import'
   | 'result'
+  | 'profile'
   | 'kline'
   | 'years'
   | 'bazi'
@@ -52,6 +55,7 @@ export const parseHashRoute = (hash: string): { route: AppRoute; sharePayload?: 
   const mainPath = cleanHash.split('?')[0].toLowerCase();
   if (mainPath === 'import' || mainPath === 'manual') return { route: 'import' };
   if (mainPath === 'demo' || mainPath === 'example') return { route: 'new' };
+  if (mainPath === 'profile' || mainPath === 'card' || mainPath === 'birth') return { route: 'profile' };
   if (mainPath === 'kline' || mainPath === 'chart') return { route: 'kline' };
   if (mainPath === 'years' || mainPath === 'stream' || mainPath === 'table') return { route: 'years' };
   if (mainPath === 'bazi' || mainPath === 'meta' || mainPath === 'pillars') return { route: 'bazi' };
@@ -87,8 +91,25 @@ const safeStorage = {
   },
 };
 
+// 徹底清理與過濾「範例演示用戶」及 demo 歷史殘留字串
+export const sanitizeCleanName = (raw?: string | null): string => {
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  if (
+    trimmed === '範例演示用戶' ||
+    trimmed.includes('範例演示用戶') ||
+    trimmed.includes('演示用戶') ||
+    trimmed.toLowerCase().includes('demo')
+  ) {
+    return '';
+  }
+  return trimmed;
+};
+
 const App: React.FC = () => {
   const [result, setResult] = useState<LifeDestinyResult | null>(null);
+  const resultRef = useRef<LifeDestinyResult | null>(null);
+  resultRef.current = result;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>('');
@@ -132,9 +153,10 @@ const App: React.FC = () => {
       return;
     }
 
-    // 命盤各區塊直達 (kline, years, bazi, analysis, result)
-    if (['result', 'kline', 'years', 'bazi', 'analysis'].includes(route)) {
-      if (!result) {
+    // 命盤各區塊直達 (profile, kline, years, bazi, analysis, result)
+    if (['result', 'profile', 'kline', 'years', 'bazi', 'analysis'].includes(route)) {
+      const activeResult = resultRef.current || safeStorage.getItem('lifekline_saved_result');
+      if (!activeResult) {
         // 若當前無命盤數據且直接拜訪子路由，引導至新排盤輸入
         navigateTo('new', true);
         return;
@@ -143,6 +165,7 @@ const App: React.FC = () => {
       setIsEditing(false);
 
       const sectionIdMap: Record<string, string> = {
+        profile: 'birth-profile-card',
         kline: 'kline-section',
         years: 'stream-years-section',
         bazi: 'bazi-meta-section',
@@ -161,6 +184,39 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // 0. 主動防禦與徹底清理歷史「範例演示用戶」殘留
+    const rawSavedUser = safeStorage.getItem('lifekline_user_name');
+    if (rawSavedUser && !sanitizeCleanName(rawSavedUser)) {
+      safeStorage.removeItem('lifekline_user_name');
+    }
+
+    const rawLastInputStr = safeStorage.getItem('lifekline_last_user_input');
+    if (rawLastInputStr && (rawLastInputStr.includes('範例演示用戶') || rawLastInputStr.includes('演示用戶'))) {
+      try {
+        const parsed = JSON.parse(rawLastInputStr);
+        if (parsed && typeof parsed === 'object') {
+          parsed.name = sanitizeCleanName(parsed.name);
+          safeStorage.setItem('lifekline_last_user_input', JSON.stringify(parsed));
+        }
+      } catch {
+        safeStorage.removeItem('lifekline_last_user_input');
+      }
+    }
+
+    const rawSavedResultStr = safeStorage.getItem('lifekline_saved_result');
+    if (rawSavedResultStr && (rawSavedResultStr.includes('範例演示用戶') || rawSavedResultStr.includes('演示用戶'))) {
+      try {
+        const parsed = JSON.parse(rawSavedResultStr);
+        if (parsed && typeof parsed === 'object') {
+          if (parsed.name && !sanitizeCleanName(parsed.name)) parsed.name = '';
+          if (parsed.userName && !sanitizeCleanName(parsed.userName)) parsed.userName = '';
+          safeStorage.setItem('lifekline_saved_result', JSON.stringify(parsed));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     // 1. 恢復 API 配置
     const savedKey = safeStorage.getItem('lifekline_api_key');
     const savedUrl = safeStorage.getItem('lifekline_api_url');
@@ -190,8 +246,11 @@ const App: React.FC = () => {
       try {
         const parsed = JSON.parse(savedLastInputStr);
         if (parsed && typeof parsed === 'object') {
+          parsed.name = sanitizeCleanName(parsed.name);
           setLastUserInput(parsed);
-          if (parsed.name && !userName) setUserName(parsed.name);
+          if (parsed.name && !userName) {
+            setUserName(parsed.name);
+          }
         }
       } catch (e) {
         console.warn('Failed to parse lifekline_last_user_input', e);
@@ -212,11 +271,14 @@ const App: React.FC = () => {
             const shared = await decompressData(payload);
             if (shared && shared.result && shared.result.chartData) {
               setResult(shared.result);
-              if (shared.userName) setUserName(shared.userName);
+              const cleanSharedUser = sanitizeCleanName(shared.userName);
+              if (cleanSharedUser) {
+                setUserName(cleanSharedUser);
+              }
               setIsEditing(false);
               safeStorage.setItem('lifekline_saved_result', JSON.stringify(shared.result));
-              if (shared.userName) {
-                safeStorage.setItem('lifekline_user_name', shared.userName);
+              if (cleanSharedUser) {
+                safeStorage.setItem('lifekline_user_name', cleanSharedUser);
               }
               setCurrentRoute('result');
               return;
@@ -229,7 +291,7 @@ const App: React.FC = () => {
 
       // 檢查 localStorage 既有已保存命盤
       const savedResultStr = safeStorage.getItem('lifekline_saved_result');
-      const savedUserName = safeStorage.getItem('lifekline_user_name');
+      const savedUserName = sanitizeCleanName(safeStorage.getItem('lifekline_user_name'));
       let loadedSaved = false;
       if (savedResultStr) {
         try {
@@ -271,11 +333,17 @@ const App: React.FC = () => {
   const handleBaziSubmit = async (data: UserInput) => {
     setIsLoading(true);
     setError(null);
-    setUserName(data.name || '');
+    const cleanSubmitName = sanitizeCleanName(data.name);
+    setUserName(cleanSubmitName);
+
+    const cleanInputData: UserInput = {
+      ...data,
+      name: cleanSubmitName,
+    };
 
     // 儲存上次輸入的完整表單狀態 (生日、時間、性別、姓名、出生地等)
-    setLastUserInput(data);
-    safeStorage.setItem('lifekline_last_user_input', JSON.stringify(data));
+    setLastUserInput(cleanInputData);
+    safeStorage.setItem('lifekline_last_user_input', JSON.stringify(cleanInputData));
 
     // Save config for convenience
     if (data.provider) safeStorage.setItem('lifekline_provider', data.provider);
@@ -288,13 +356,17 @@ const App: React.FC = () => {
     if (data.awsSessionToken) safeStorage.setItem('lifekline_aws_st', data.awsSessionToken);
 
     try {
-      const analysisResult = await generateLifeAnalysis(data);
+      const analysisResult = await generateLifeAnalysis(cleanInputData);
       setResult(analysisResult);
       setIsEditing(false);
 
       // Persist to localStorage
       safeStorage.setItem('lifekline_saved_result', JSON.stringify(analysisResult));
-      safeStorage.setItem('lifekline_user_name', data.name || '');
+      if (cleanSubmitName) {
+        safeStorage.setItem('lifekline_user_name', cleanSubmitName);
+      } else {
+        safeStorage.removeItem('lifekline_user_name');
+      }
 
       navigateTo('result');
     } catch (err: any) {
@@ -306,10 +378,13 @@ const App: React.FC = () => {
 
   // 整合上次輸入的生辰數據與 API 配置，確保「返回修改」時完整還原
   const mergedFormData = useMemo(() => {
+    const rawMergedName = lastUserInput.name ?? userName ?? initialConfig.name ?? '';
+    const safeMergedName = sanitizeCleanName(rawMergedName);
+
     return {
       ...initialConfig,
       ...lastUserInput,
-      name: lastUserInput.name ?? userName ?? initialConfig.name ?? '',
+      name: safeMergedName,
       gender: lastUserInput.gender ?? Gender.MALE,
       birthDate: lastUserInput.birthDate ?? '',
       birthTime: lastUserInput.birthTime ?? '12:00',
@@ -459,6 +534,133 @@ const App: React.FC = () => {
 
     const safeUserName = escapeHtml(userName);
 
+    // 構建命造檔案與原始八字四柱 HTML (供離線網頁使用)
+    const baziMeta = result.baziMeta;
+    const solarInfo = baziMeta?.solarTimeInfo;
+    const yearPillar = escapeHtml(baziMeta?.yearPillar || result.analysis.bazi?.[0] || '—');
+    const monthPillar = escapeHtml(baziMeta?.monthPillar || result.analysis.bazi?.[1] || '—');
+    const dayPillar = escapeHtml(baziMeta?.dayPillar || result.analysis.bazi?.[2] || '—');
+    const hourPillar = escapeHtml(baziMeta?.hourPillar || result.analysis.bazi?.[3] || '—');
+
+    const yearGod = escapeHtml(baziMeta?.tenGods?.year || '—');
+    const monthGod = escapeHtml(baziMeta?.tenGods?.month || '—');
+    const dayGod = escapeHtml(baziMeta?.tenGods?.day || '日元');
+    const hourGod = escapeHtml(baziMeta?.tenGods?.hour || '—');
+
+    const yearNayin = escapeHtml(baziMeta?.nayinPillars?.year || '—');
+    const monthNayin = escapeHtml(baziMeta?.nayinPillars?.month || '—');
+    const dayNayin = escapeHtml(baziMeta?.nayinPillars?.day || '—');
+    const hourNayin = escapeHtml(baziMeta?.nayinPillars?.hour || '—');
+
+    const genderLabel = lastUserInput.gender === Gender.FEMALE ? '坤造 (女)' : '乾造 (男)';
+    const birthDateStr = escapeHtml(solarInfo?.originalDate || lastUserInput.birthDate || '');
+    const birthTimeStr = escapeHtml(solarInfo?.originalTime || lastUserInput.birthTime || '');
+    const placeStr = escapeHtml(solarInfo?.place || result.birthPlace || lastUserInput.birthPlace || '臺北市');
+    const lngStr = solarInfo?.location?.lng !== undefined
+      ? (solarInfo.location.lng >= 0 ? `${solarInfo.location.lng}°E` : `${Math.abs(solarInfo.location.lng)}°W`)
+      : '121.57°E';
+    const startAgeStr = escapeHtml(baziMeta?.startAge || lastUserInput.startAge || '1');
+    const firstDaYunStr = escapeHtml(baziMeta?.firstDaYun || lastUserInput.firstDaYun || '—');
+
+    const dayMaster = escapeHtml(baziMeta?.dayMaster || (dayPillar !== '—' ? dayPillar.charAt(0) : '日元'));
+    const strength = escapeHtml(baziMeta?.strength || '');
+    const strengthReason = escapeHtml(baziMeta?.strengthReason || '');
+    const geJu = escapeHtml(baziMeta?.geJu || '八字格局');
+    const geJuDesc = escapeHtml(baziMeta?.geJuDescription || '');
+    const usefulStr = escapeHtml(baziMeta?.usefulGod || (baziMeta?.usefulElements?.length ? baziMeta.usefulElements.join('、') : '生身幫扶'));
+    const tabooStr = escapeHtml(baziMeta?.tabooGod || (baziMeta?.tabooElements?.length ? baziMeta.tabooElements.join('、') : '克泄消耗'));
+
+    const solarSectionHtml = solarInfo ? `
+      <div class="mt-4 p-4 rounded-xl bg-indigo-950/70 border border-indigo-400/30 text-xs sm:text-sm text-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-amber-400 font-bold">天文立盤：</span>
+          <span>鐘錶標準時 <strong class="font-mono text-white">${escapeHtml(solarInfo.originalTime)}</strong></span>
+          <span class="text-amber-300 font-bold">➔</span>
+          <span>真太陽時 <strong class="font-mono text-emerald-300 font-bold">${escapeHtml(solarInfo.solarTime)}</strong></span>
+          <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-200 border border-amber-400/30 font-bold text-xs">【${escapeHtml(solarInfo.shichenBranch)}時立盤】</span>
+        </div>
+        <div class="text-slate-300 text-xs flex flex-wrap gap-2">
+          <span>經度差：<strong class="font-mono text-amber-200">${solarInfo.offsets.lngOffsetMinutes >= 0 ? '+' : ''}${solarInfo.offsets.lngOffsetMinutes.toFixed(1)}m</strong></span>
+          <span>·</span>
+          <span>均時差：<strong class="font-mono text-amber-200">${solarInfo.offsets.eotMinutes >= 0 ? '+' : ''}${solarInfo.offsets.eotMinutes.toFixed(1)}m</strong></span>
+          <span>·</span>
+          <span class="text-emerald-300 font-bold">合計校正：<strong class="font-mono">${solarInfo.offsets.totalOffsetMinutes >= 0 ? '+' : ''}${solarInfo.offsets.totalOffsetMinutes.toFixed(1)}m</strong></span>
+        </div>
+      </div>
+    ` : '';
+
+    const birthProfileHtml = `
+      <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100 p-6 md:p-8 rounded-3xl shadow-sm border border-amber-500/30">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/10 pb-5">
+          <div>
+            <div class="flex flex-wrap items-center gap-2 mb-1.5">
+              <span class="text-xs uppercase tracking-widest text-amber-400 font-extrabold">命造檔案與原始生辰</span>
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-white/10 text-amber-200 border border-white/15">${genderLabel}</span>
+              <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-200 border border-amber-400/30">${startAgeStr} 歲起運 · 第一步【${firstDaYunStr}】</span>
+            </div>
+            <h2 class="text-3xl font-serif-sc font-bold text-amber-100">${safeUserName || '未具名命造'}</h2>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+            ${birthDateStr ? `<span class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">公曆 ${birthDateStr} ${birthTimeStr}</span>` : ''}
+            <span class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10">出生地：${placeStr} (${escapeHtml(lngStr)})</span>
+          </div>
+        </div>
+
+        ${solarSectionHtml}
+
+        <div class="mt-6">
+          <div class="text-sm font-bold text-amber-300 mb-3">原始命造四柱八字排盤 (年月日時 · 十神 · 納音)</div>
+          <div class="grid grid-cols-4 gap-3 text-center">
+            <div class="bg-white/5 p-4 rounded-2xl border border-amber-400/20">
+              <div class="text-xs text-amber-300 font-bold mb-1">年柱 (根基)</div>
+              <div class="text-xs text-indigo-300 font-extrabold mb-1">${yearGod}</div>
+              <div class="text-3xl font-serif-sc font-black text-amber-100 my-2">${yearPillar}</div>
+              <div class="text-xs text-slate-300 bg-white/10 py-1 px-1.5 rounded-lg">${yearNayin}</div>
+            </div>
+            <div class="bg-white/5 p-4 rounded-2xl border border-amber-400/20">
+              <div class="text-xs text-amber-300 font-bold mb-1">月柱 (提綱)</div>
+              <div class="text-xs text-indigo-300 font-extrabold mb-1">${monthGod}</div>
+              <div class="text-3xl font-serif-sc font-black text-amber-100 my-2">${monthPillar}</div>
+              <div class="text-xs text-slate-300 bg-white/10 py-1 px-1.5 rounded-lg">${monthNayin}</div>
+            </div>
+            <div class="bg-white/5 p-4 rounded-2xl border border-amber-400/20">
+              <div class="text-xs text-amber-300 font-bold mb-1">日柱 (自身)</div>
+              <div class="text-xs text-indigo-300 font-extrabold mb-1">${dayGod}</div>
+              <div class="text-3xl font-serif-sc font-black text-amber-100 my-2">${dayPillar}</div>
+              <div class="text-xs text-slate-300 bg-white/10 py-1 px-1.5 rounded-lg">${dayNayin}</div>
+            </div>
+            <div class="bg-white/5 p-4 rounded-2xl border border-amber-400/20">
+              <div class="text-xs text-amber-300 font-bold mb-1">時柱 (歸宿)</div>
+              <div class="text-xs text-indigo-300 font-extrabold mb-1">${hourGod}</div>
+              <div class="text-3xl font-serif-sc font-black text-amber-100 my-2">${hourPillar}</div>
+              <div class="text-xs text-slate-300 bg-white/10 py-1 px-1.5 rounded-lg">${hourNayin}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 pt-5 border-t border-white/10 grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm">
+          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-amber-400 font-bold block mb-1">日主與旺衰：</span>
+            <span class="text-amber-100 font-bold text-base">${dayMaster}</span>
+            ${strength ? `<span class="ml-2 px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-200 border border-amber-400/30">${strength}</span>` : ''}
+            ${strengthReason ? `<p class="text-slate-300 text-xs mt-1">${strengthReason}</p>` : ''}
+          </div>
+          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-indigo-400 font-bold block mb-1">命理格局：</span>
+            <span class="text-indigo-100 font-bold text-base">${geJu}</span>
+            ${geJuDesc ? `<p class="text-slate-300 text-xs mt-1">${geJuDesc}</p>` : ''}
+          </div>
+          <div class="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <span class="text-emerald-400 font-bold block mb-1">五行喜忌：</span>
+            <div class="text-xs space-y-1">
+              <div><strong class="text-emerald-300">喜用：</strong>${usefulStr}</div>
+              <div><strong class="text-rose-300">忌仇：</strong>${tabooStr}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
     const tableRows = result.chartData
       .map((item) => {
         const scoreColor = item.close >= item.open ? 'text-green-700' : 'text-red-700';
@@ -565,6 +767,7 @@ const App: React.FC = () => {
       <h1 class="text-4xl md:text-5xl font-bold font-serif-sc text-slate-950 mb-3">${safeUserName ? safeUserName + '的' : ''}888人生K線命理報告</h1>
       <p class="text-slate-600 text-base font-medium">生成時間：${escapeHtml(timeString)}</p>
     </div>
+    ${birthProfileHtml}
     <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
       <div class="flex items-center gap-2.5 mb-6">
         <div class="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
@@ -667,6 +870,19 @@ const App: React.FC = () => {
 
                 <button
                   type="button"
+                  onClick={() => navigateTo('profile')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
+                    currentRoute === 'profile'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-700 hover:text-slate-950 hover:bg-slate-100'
+                  }`}
+                >
+                  <User className="w-4 h-4 text-amber-500" />
+                  <span>生辰檔案</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => navigateTo('kline')}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl transition flex-shrink-0 ${
                     currentRoute === 'kline'
@@ -739,7 +955,7 @@ const App: React.FC = () => {
               <div className="w-full max-w-2xl bg-indigo-50 border border-indigo-200 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-indigo-950">
                 <div className="flex items-center gap-2.5 text-sm sm:text-base font-bold">
                   <Sparkles className="w-5 h-5 text-indigo-700 flex-shrink-0" />
-                  <span>已保存命盤數據（{userName || '現有結果'}）</span>
+                  <span>已保存命盤數據{userName ? `（${userName}）` : ''}</span>
                 </div>
                 <button
                   type="button"
@@ -890,6 +1106,19 @@ const App: React.FC = () => {
               </div>
             </div>
 
+            {/* 結果頁頂部原始生辰八字與推演檔案卡 */}
+            <BirthProfileCard
+              userName={userName}
+              gender={lastUserInput.gender}
+              birthDate={lastUserInput.birthDate}
+              birthTime={lastUserInput.birthTime}
+              birthPlace={result.birthPlace || lastUserInput.birthPlace}
+              baziMeta={result.baziMeta}
+              startAge={lastUserInput.startAge}
+              firstDaYun={lastUserInput.firstDaYun}
+              analysisBazi={result.analysis?.bazi}
+            />
+
             {/* 走勢圖區塊 */}
             <section id="kline-section" className="space-y-4 break-inside-avoid scroll-mt-24">
               <div className="flex flex-col gap-2">
@@ -964,7 +1193,7 @@ const App: React.FC = () => {
                 </tbody>
               </table>
               <div className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center text-sm text-slate-700 font-medium gap-2">
-                <span>用戶：{userName || '未命名'}</span>
+                <span>用戶：{userName || '未具名命造'}</span>
                 <span>技術提供：david888.com</span>
                 <span>生成時間：{new Date().toLocaleString()}</span>
               </div>
