@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LifeDestinyResult } from '../types';
 import { CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
-import { repairAndParseJson } from '../services/geminiService';
+import { repairAndParseJson, harmonizeDestinyScores } from '../services/aiService';
 
 interface ImportDataModeProps {
   onDataImport: (data: LifeDestinyResult) => void;
@@ -77,7 +77,7 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
       // 轉換爲應用所需格式
       const analysisSource = data.analysis || data;
       const result: LifeDestinyResult = {
-        chartData: sanitizedChartPoints,
+        chartData: harmonizeDestinyScores(sanitizedChartPoints),
         analysis: {
           bazi: analysisSource.bazi || [],
           summary: analysisSource.summary || '無摘要',

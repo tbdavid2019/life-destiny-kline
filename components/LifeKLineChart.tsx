@@ -117,16 +117,16 @@ const CandleShape = (props: any) => {
   );
 };
 
-// Custom Label Component for the Peak Star
+// Custom Label Component for the Peak Star (全盤嚴格只標註單一最高巔峰點，防止標籤重疊炸版)
 const PeakLabel = (props: any) => {
-  const { x, y, width, value, maxHigh } = props;
+  const { x, y, width, value, payload, index, peakAge, data } = props;
 
-  // Only render if this value equals the global max high
-  if (value !== maxHigh) return null;
+  const currentAge = payload?.age ?? (data && typeof index === 'number' ? data[index]?.age : null);
+  if (currentAge !== peakAge) return null;
 
   return (
     <g>
-      {/* Red Star Icon */}
+      {/* Red/Amber Star Icon */}
       <path
         d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
         transform={`translate(${x + width / 2 - 8}, ${y - 28}) scale(0.7)`}
@@ -154,10 +154,19 @@ const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
     return <div className="h-[500px] flex items-center justify-center text-slate-700 font-bold text-lg">無數據</div>;
   }
 
+  // 鎖定全盤唯一的人生最高巔峰年份（多個相同分數時，優先取綜合分最高或最早的一年）
+  const peakPoint = data.reduce((prev, cur) => {
+    if (cur.high > prev.high) return cur;
+    if (cur.high === prev.high && cur.score > prev.score) return cur;
+    return prev;
+  }, data[0]);
+  const peakAge = peakPoint ? peakPoint.age : -1;
+
   const transformedData = data.map((d) => ({
     ...d,
     bodyRange: [Math.min(d.open, d.close), Math.max(d.open, d.close)],
     labelPoint: d.high,
+    isPeak: d.age === peakAge,
   }));
 
   // Identify Da Yun change points to draw reference lines
@@ -165,9 +174,6 @@ const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
     if (i === 0) return true;
     return d.daYun !== data[i - 1].daYun;
   });
-
-  // Calculate Global Max High for the peak label
-  const maxHigh = Math.max(...data.map((d) => d.high));
 
   return (
     <div className="w-full h-[620px] bg-white p-4 md:p-7 rounded-2xl border border-slate-200 shadow-sm relative">
@@ -254,7 +260,7 @@ const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
             <LabelList
               dataKey="high"
               position="top"
-              content={<PeakLabel maxHigh={maxHigh} />}
+              content={<PeakLabel peakAge={peakAge} data={transformedData} />}
             />
           </Bar>
         </ComposedChart>

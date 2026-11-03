@@ -126,14 +126,17 @@ export function completeChartPoints(
   const lastScore = Number(lastPoint.score) || 60;
   const lastDaYun = String(lastPoint.daYun || '晚運福壽');
 
+  // 晚年運勢回歸平淡安詳（基準約 52-65 分，避免高位躺平）
+  const baseScore = Math.min(65, Math.max(50, Math.round(lastScore * 0.7 + 15)));
+
   const completed = [...points];
   for (let age = lastAge + 1; age <= 100; age++) {
     const year = lastYear + (age - lastAge);
     const ganZhi = getYearGanZhi(year);
-    // 晚年運勢平穩自然波動
-    const delta = Math.sin(age) * 5 + Math.cos(age * 0.5) * 3;
-    const score = Math.max(35, Math.min(88, Math.round(lastScore + delta)));
-    const open = Math.round(score - 2 + (age % 5) - 2);
+    // 自然平穩波動
+    const delta = Math.sin(age * 0.7) * 5 + Math.cos(age * 0.3) * 3;
+    const score = Math.max(38, Math.min(75, Math.round(baseScore + delta)));
+    const open = Math.round(score - 1 + (age % 3) - 1);
     const close = score;
     const high = Math.max(open, close) + 3;
     const low = Math.min(open, close) - 3;
@@ -153,6 +156,131 @@ export function completeChartPoints(
   }
 
   return completed;
+}
+
+/**
+ * 智能校準流年 K 線分數與形態
+ * 解決 LLM 常見的「阿諛奉承偏見 / 向上飄移失真」（即成年與晚年全盤躺平在 90-100 分、滿分泛濫）
+ * 保證符合八字大運週期、自然起伏與真實金融 K 線連續性。
+ */
+export function harmonizeDestinyScores(points: any[]): any[] {
+  if (!points || !Array.isArray(points) || points.length === 0) return points;
+
+  const rawScores = points.map((p) => Number(p.score) || Number(p.close) || 50);
+  const avg = rawScores.reduce((sum, s) => sum + s, 0) / rawScores.length;
+  const countAbove88 = rawScores.filter((s) => s >= 88).length;
+  const count98Plus = rawScores.filter((s) => s >= 98).length;
+  const minRaw = Math.min(...rawScores);
+  const maxRaw = Math.max(...rawScores);
+
+  // 判定是否為高位躺平或單調漂移失真 (例如超過 18 年 >= 88 分、或滿分超過 2 年、或平均分高達 76+、或分數跨度極窄全在 85 以上)
+  const isHighPlateau = countAbove88 > 18 || count98Plus > 2 || avg > 76 || (minRaw >= 80 && maxRaw - minRaw < 20);
+
+  // 找出全盤最高分所在的索引（若多個相同，取 28~58 歲壯年期優先，作為人生黃金巔峰）
+  let bestPeakIdx = 0;
+  let highestScore = -1;
+  points.forEach((p, idx) => {
+    const age = Number(p.age) || idx + 1;
+    let weight = rawScores[idx];
+    if (age >= 28 && age <= 58) weight += 1.5;
+    if (weight > highestScore) {
+      highestScore = weight;
+      bestPeakIdx = idx;
+    }
+  });
+
+  if (!isHighPlateau) {
+    // 數據整體分佈尚可，但仍需進行 K 線連續性與唯一巔峰平滑
+    let prevClose = Number(points[0].open) || 50;
+
+    return points.map((p, idx) => {
+      let score = Number(p.score) || 50;
+      // 避免多個 98-100 分泛濫，只有唯一巔峰保留 96-98，其餘 95 以上壓制到 86-92
+      if (score >= 95) {
+        if (idx === bestPeakIdx) {
+          score = Math.min(98, score);
+        } else {
+          score = 86 + (idx % 6);
+        }
+      }
+
+      // 晚年（75歲以上）適度歸於平淡安詳（不超過 78 分）
+      const age = Number(p.age) || idx + 1;
+      if (age > 75 && score > 78 && idx !== bestPeakIdx) {
+        score = Math.round(58 + (score - 78) * 0.4);
+      }
+
+      let open = idx === 0 ? Number(p.open) || score - 2 : Math.round((Number(p.open) + prevClose) / 2);
+      let close = score;
+      prevClose = close;
+
+      const high = Math.max(Number(p.high) || close, Math.max(open, close) + 2);
+      const low = Math.min(Number(p.low) || close, Math.min(open, close) - 2);
+
+      return {
+        ...p,
+        score,
+        open,
+        close,
+        high,
+        low,
+      };
+    });
+  }
+
+  // 針對高位躺平失真的數據進行重塑映射（保留原始相對強弱位次與詳批內容，重塑命理自然起伏波動）
+  const range = maxRaw - minRaw || 1;
+  let prevClose = 52;
+
+  return points.map((p, idx) => {
+    const age = Number(p.age) || idx + 1;
+    // 原始相對強度 (0 ~ 1)
+    const relativeRank = (rawScores[idx] - minRaw) / range;
+
+    // 大運 10 年一個波段週期 (大運交替帶來的牛市與熊市起伏)
+    const daYunCycle = Math.sin((age / 10) * Math.PI) * 12 + Math.cos((age / 5) * Math.PI) * 5;
+
+    // 年齡基礎水位
+    let baseLevel = 55;
+    if (age <= 18) baseLevel = 52; // 少年求學
+    else if (age <= 30) baseLevel = 58; // 青年立業
+    else if (age <= 55) baseLevel = 64; // 壯年中流砥柱
+    else if (age <= 70) baseLevel = 60; // 花甲收成
+    else baseLevel = 54; // 晚年安泰
+
+    // 計算重塑後的分數
+    let calibratedScore = Math.round(baseLevel + daYunCycle + (relativeRank - 0.5) * 22);
+
+    // 晚年（70歲後）溫和收斂，避免破百
+    if (age > 70) {
+      calibratedScore = Math.min(75, Math.max(45, calibratedScore));
+    }
+
+    // 嚴格保障全盤唯一最高峰年份（96分）
+    if (idx === bestPeakIdx) {
+      calibratedScore = 96;
+    } else {
+      calibratedScore = Math.max(28, Math.min(92, calibratedScore));
+    }
+
+    let open = idx === 0 ? calibratedScore - 2 : prevClose + Math.round(Math.sin(idx * 1.5) * 2);
+    let close = calibratedScore;
+    prevClose = close;
+
+    const wickHigh = Math.abs(Math.sin(idx * 2.1)) * 3 + 2;
+    const wickLow = Math.abs(Math.cos(idx * 1.7)) * 3 + 2;
+    const high = Math.round(Math.max(open, close) + wickHigh);
+    const low = Math.round(Math.min(open, close) - wickLow);
+
+    return {
+      ...p,
+      score: close,
+      open,
+      close,
+      high,
+      low,
+    };
+  });
 }
 
 // Helper to determine stem polarity
@@ -380,8 +508,11 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     // 自動補足 1-100 歲流年資料（避免模型提早中斷）
     const fullPoints = completeChartPoints(sanitizedPoints, birthYearNum, startAgeInt, input.firstDaYun);
 
+    // 智能校準流年 K 線分數與形態，消除模型阿諛漂移與高位躺平失真
+    const harmonizedPoints = harmonizeDestinyScores(fullPoints);
+
     return {
-      chartData: fullPoints,
+      chartData: harmonizedPoints,
       analysis: {
         bazi: analysisSource.bazi || [],
         summary: analysisSource.summary || "無摘要",
