@@ -105,14 +105,6 @@ export interface FetchModelsParams {
 export async function fetchModelList(params: FetchModelsParams): Promise<ModelOption[]> {
   const { provider, apiKey, apiBaseUrl, awsConfig } = params;
 
-  // 本地演示模式特殊處理
-  if (apiKey?.trim().toLowerCase() === 'demo') {
-    return [
-      { id: 'demo-bazi-master-v1', name: '🎯 本地演示模式模型 (無須消耗 Token)' },
-      { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (演示模式)' },
-    ];
-  }
-
   // 1. AWS Bedrock 處理
   if (provider === 'bedrock') {
     return await fetchBedrockModels(awsConfig, apiBaseUrl, apiKey);

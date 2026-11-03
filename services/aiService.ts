@@ -2,7 +2,6 @@ import { UserInput, LifeDestinyResult, Gender } from "../types";
 import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 import { signAwsRequest } from "./awsSigV4";
 import { getDefaultBaseUrl } from "./modelService";
-import defaultMockData from "../mock-data.json";
 import {
   calculateBazi,
   BaziCalculationResult,
@@ -369,56 +368,14 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
   const cleanApiKey = apiKey ? apiKey.trim() : "";
   const targetModel = modelName && modelName.trim() ? modelName.trim() : "gemini-2.5-flash";
 
-  // 本地演示模式：當 API Key 爲 'demo' 時，使用預生成的本地數據
-  if (cleanApiKey.toLowerCase() === 'demo') {
-    console.log('🎯 使用本地演示模式');
-    let mockData: any = defaultMockData;
-    try {
-      const res = await fetch('./mock-data.json');
-      if (res.ok) {
-        mockData = await res.json();
-      }
-    } catch {
-      // 離線或相對路徑例外時使用預打包數據
-    }
-    const demoBaziMeta = input.baziMeta || calculateBazi(new Date(1981, 9, 15, 12, 0), 1);
-    return {
-      chartData: mockData.chartPoints,
-      analysis: {
-        bazi: mockData.bazi || [],
-        summary: mockData.summary || "無摘要",
-        summaryScore: mockData.summaryScore || 5,
-        personality: mockData.personality || "無性格分析",
-        personalityScore: mockData.personalityScore || 5,
-        industry: mockData.industry || "無",
-        industryScore: mockData.industryScore || 5,
-        fengShui: mockData.fengShui || "建議多親近自然，保持心境平和。",
-        fengShuiScore: mockData.fengShuiScore || 5,
-        wealth: mockData.wealth || "無",
-        wealthScore: mockData.wealthScore || 5,
-        marriage: mockData.marriage || "無",
-        marriageScore: mockData.marriageScore || 5,
-        health: mockData.health || "無",
-        healthScore: mockData.healthScore || 5,
-        family: mockData.family || "無",
-        familyScore: mockData.familyScore || 5,
-        crypto: mockData.crypto || "暫無交易分析",
-        cryptoScore: mockData.cryptoScore || 5,
-        cryptoYear: mockData.cryptoYear || "待定",
-        cryptoStyle: mockData.cryptoStyle || "現貨定投",
-      },
-      baziMeta: demoBaziMeta,
-    };
-  }
-
   // Bedrock 使用 IAM Key，其他 Provider 驗證 API Key
   if (provider === 'bedrock' && (!apiBaseUrl || !apiBaseUrl.trim())) {
     if (!awsAccessKeyId?.trim() || !awsSecretAccessKey?.trim()) {
-      throw new Error("請填寫有效的 AWS Access Key ID 與 Secret Access Key（或輸入 'demo' 體驗本地演示模式）");
+      throw new Error("請填寫有效的 AWS Access Key ID 與 Secret Access Key");
     }
   } else {
     if (!cleanApiKey) {
-      throw new Error("請在表單中填寫有效的 API Key（輸入 'demo' 可使用本地演示模式）");
+      throw new Error("請在表單中填寫有效的 API Key");
     }
     if (/[^\x00-\x7F]/.test(cleanApiKey)) {
       throw new Error("API Key 包含非法字符（如中文或全角符號），請檢查輸入是否正確。");
@@ -445,9 +402,14 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
   const bYear = parseInt(input.birthYear) || 1990;
   const genderNum = input.gender === Gender.MALE ? 1 : 0;
 
-  // 正統天文曆法排盤：子平真詮十神旺衰 + 紫微斗數十四主星生年四化元盤
+  // 正統天文曆法排盤：天文真太陽時校正 + 子平真詮十神旺衰 + 紫微斗數十四主星生年四化元盤
   const baziMeta: BaziCalculationResult =
-    input.baziMeta || calculateBazi(new Date(bYear, 5, 15, 12, 0), genderNum);
+    input.baziMeta ||
+    calculateBazi(new Date(bYear, 5, 15, 12, 0), genderNum, {
+      birthPlace: input.birthPlace,
+      customLongitude: input.customLongitude,
+      customLatitude: input.customLatitude,
+    });
 
   // Calculate Da Yun Direction accurately
   const yearStemPolarity = getStemPolarity(input.yearPillar);
@@ -471,6 +433,13 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     性別：${genderStr}
     姓名：${input.name || "未提供"}
     出生年份：${input.birthYear}年 (陽曆)
+    出生地點：${baziMeta.solarTimeInfo?.place || input.birthPlace || '臺北市'}
+    
+    【天文真太陽時立盤校正背景】
+    - 出生地點：${baziMeta.solarTimeInfo?.place || input.birthPlace || '臺北市'} (${baziMeta.solarTimeInfo?.location.lng ? (baziMeta.solarTimeInfo.location.lng >= 0 ? `${baziMeta.solarTimeInfo.location.lng}°E` : `${Math.abs(baziMeta.solarTimeInfo.location.lng)}°W`) : '121.57°E'})
+    - 鐘錶出生時間：${baziMeta.solarTimeInfo?.originalDate || input.birthDate || ''} ${baziMeta.solarTimeInfo?.originalTime || input.birthTime || ''}
+    - 校正後真太陽時：${baziMeta.solarTimeInfo?.solarDate || ''} ${baziMeta.solarTimeInfo?.solarTime || ''} (${baziMeta.solarTimeInfo?.offsets.description || '已完成天文校正'})
+    - 時辰與子時：時辰地支【${baziMeta.solarTimeInfo?.shichenBranch || input.hourPillar?.slice(-1) || ''}時】(${baziMeta.solarTimeInfo?.ziHourType === 'early_zi' ? '早子時 (00:00-00:59)' : baziMeta.solarTimeInfo?.ziHourType === 'late_zi' ? '夜子時 (23:00-23:59)' : '正時辰'})，四柱八字與紫微命宮已由天文真太陽時精準立盤。
     
     【八字四柱】
     年柱：${input.yearPillar} (天干屬性：${yearStemPolarity === 'YANG' ? '陽' : '陰'})
@@ -632,6 +601,8 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
         cryptoStyle: analysisSource.cryptoStyle || "現貨定投",
       },
       baziMeta,
+      birthPlace: baziMeta.solarTimeInfo?.place || input.birthPlace || '臺北市',
+      solarTimeInfo: baziMeta.solarTimeInfo,
     };
   } catch (error) {
     console.error("AI Generation Error:", error);

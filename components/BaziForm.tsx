@@ -17,8 +17,12 @@ import {
   Cpu,
   Server,
   SlidersHorizontal,
+  MapPin,
+  SunMedium,
+  Compass,
 } from 'lucide-react';
 import { calculateBazi } from '../services/baziUtils';
+import { CITY_GROUPS } from '../services/solarTime';
 import { PROVIDERS, fetchModelList, getDefaultBaseUrl } from '../services/modelService';
 
 interface BaziFormProps {
@@ -43,6 +47,11 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     name: initialData?.name || '',
     gender: initialData?.gender || Gender.MALE,
     birthYear: initialData?.birthYear || '',
+    birthDate: initialData?.birthDate || '',
+    birthTime: initialData?.birthTime || '12:00',
+    birthPlace: initialData?.birthPlace || '臺北市',
+    customLongitude: initialData?.customLongitude,
+    customLatitude: initialData?.customLatitude,
     yearPillar: initialData?.yearPillar || '',
     monthPillar: initialData?.monthPillar || '',
     dayPillar: initialData?.dayPillar || '',
@@ -59,8 +68,22 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     awsSessionToken: initialData?.awsSessionToken || '',
   });
 
-  const [birthDate, setBirthDate] = useState<string>('');
-  const [birthTime, setBirthTime] = useState<string>('12:00');
+  const resolveInitialPlace = (data?: Partial<UserInput>): string => {
+    if (!data?.birthPlace) return '臺北市';
+    if (data.birthPlace === '自訂經度' || data.birthPlace === 'custom' || (data.customLongitude !== undefined && data.customLongitude !== null)) {
+      return 'custom';
+    }
+    return data.birthPlace;
+  };
+
+  const [birthDate, setBirthDate] = useState<string>(initialData?.birthDate || '');
+  const [birthTime, setBirthTime] = useState<string>(initialData?.birthTime || '12:00');
+  const [birthPlace, setBirthPlace] = useState<string>(resolveInitialPlace(initialData));
+  const [customLng, setCustomLng] = useState<string>(
+    initialData?.customLongitude !== undefined && initialData?.customLongitude !== null
+      ? String(initialData.customLongitude)
+      : ''
+  );
 
   // UI state
   const [showApiKey, setShowApiKey] = useState(false);
@@ -81,11 +104,12 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     birthDate?: string;
     awsAccessKeyId?: string;
     awsSecretAccessKey?: string;
+    customLng?: string;
   }>({});
 
   const activeProviderMeta = PROVIDERS.find((p) => p.id === formData.provider) || PROVIDERS[0];
 
-  // Auto-calculate Bazi when date/time/gender changes
+  // Auto-calculate Bazi when date/time/gender/place/customLng changes
   useEffect(() => {
     if (birthDate && birthTime) {
       try {
@@ -93,10 +117,24 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
         const [hour, minute] = birthTime.split(':').map(Number);
         const dateObj = new Date(year, month - 1, day, hour, minute);
 
-        const result = calculateBazi(dateObj, formData.gender === Gender.MALE ? 1 : 0);
+        const parsedLng = birthPlace === 'custom' && customLng.trim() !== '' ? Number(customLng) : undefined;
+        const validLng = Number.isFinite(parsedLng) && parsedLng! >= -180 && parsedLng! <= 180 ? parsedLng : undefined;
+
+        const result = calculateBazi(
+          dateObj,
+          formData.gender === Gender.MALE ? 1 : 0,
+          {
+            birthPlace: birthPlace === 'custom' ? '自訂經度' : birthPlace,
+            customLongitude: validLng,
+          }
+        );
 
         setFormData((prev) => ({
           ...prev,
+          birthDate,
+          birthTime,
+          birthPlace: birthPlace === 'custom' ? '自訂經度' : birthPlace,
+          customLongitude: validLng,
           birthYear: year.toString(),
           yearPillar: result.yearPillar,
           monthPillar: result.monthPillar,
@@ -110,7 +148,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
         console.error('Bazi calculation failed', err);
       }
     }
-  }, [birthDate, birthTime, formData.gender]);
+  }, [birthDate, birthTime, formData.gender, birthPlace, customLng]);
 
   // Sync initialData changes if parent updates
   useEffect(() => {
@@ -124,6 +162,21 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           prev.apiBaseUrl ||
           getDefaultBaseUrl(initialData.provider || prev.provider || 'gemini'),
       }));
+
+      if (initialData.birthDate) {
+        setBirthDate(initialData.birthDate);
+      }
+      if (initialData.birthTime) {
+        setBirthTime(initialData.birthTime);
+      }
+      if (initialData.birthPlace) {
+        setBirthPlace(resolveInitialPlace(initialData));
+      } else if (initialData.customLongitude !== undefined && initialData.customLongitude !== null) {
+        setBirthPlace('custom');
+      }
+      if (initialData.customLongitude !== undefined && initialData.customLongitude !== null) {
+        setCustomLng(String(initialData.customLongitude));
+      }
     }
   }, [initialData]);
 
@@ -198,20 +251,21 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
       birthDate?: string;
       awsAccessKeyId?: string;
       awsSecretAccessKey?: string;
+      customLng?: string;
     } = {};
 
     const isAws = formData.provider === 'bedrock' && (!formData.apiBaseUrl || !formData.apiBaseUrl.trim());
 
     if (isAws) {
-      if (!formData.awsAccessKeyId?.trim() && formData.apiKey?.trim().toLowerCase() !== 'demo') {
+      if (!formData.awsAccessKeyId?.trim()) {
         errors.awsAccessKeyId = '請輸入 AWS Access Key ID';
       }
-      if (!formData.awsSecretAccessKey?.trim() && formData.apiKey?.trim().toLowerCase() !== 'demo') {
+      if (!formData.awsSecretAccessKey?.trim()) {
         errors.awsSecretAccessKey = '請輸入 AWS Secret Access Key';
       }
     } else {
       if (!formData.apiKey.trim()) {
-        errors.apiKey = '請輸入 API Key (輸入 demo 可免金鑰體驗)';
+        errors.apiKey = '請輸入有效的 API Key';
       }
     }
 
@@ -223,16 +277,31 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
       errors.birthDate = '請選擇出生日期';
     }
 
+    if (birthPlace === 'custom') {
+      const numLng = Number(customLng);
+      if (customLng.trim() === '' || isNaN(numLng) || numLng < -180 || numLng > 180) {
+        errors.customLng = '請輸入有效的經度 (-180 至 180 度)';
+      }
+    }
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
     }
 
-    onSubmit(formData);
+    const parsedLng = birthPlace === 'custom' && customLng.trim() !== '' ? Number(customLng) : undefined;
+    const submissionData: UserInput = {
+      ...formData,
+      birthDate,
+      birthTime,
+      birthPlace: birthPlace === 'custom' ? '自訂經度' : birthPlace,
+      customLongitude: Number.isFinite(parsedLng) ? parsedLng : undefined,
+    };
+
+    onSubmit(submissionData);
   };
 
   const isAwsProvider = formData.provider === 'bedrock';
-  const isDemoMode = formData.apiKey?.trim().toLowerCase() === 'demo';
 
   return (
     <div className="w-full max-w-3xl bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-200">
@@ -294,17 +363,22 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           </div>
         </div>
 
-        {/* 出生時間 (陽曆) */}
-        <div className="bg-indigo-50/80 p-5 rounded-2xl border border-indigo-200 space-y-4">
-          <div className="flex items-center gap-2.5 text-indigo-950 text-base sm:text-lg font-bold">
-            <Calendar className="w-5 h-5 text-indigo-700 flex-shrink-0" />
-            <span>出生時間 (陽曆西曆)</span>
+        {/* 出生時間與地點 (天文真太陽時立盤校正) */}
+        <div className="bg-indigo-50/80 p-5 sm:p-6 rounded-2xl border border-indigo-200 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-200/80 pb-3">
+            <div className="flex items-center gap-2.5 text-indigo-950 text-base sm:text-lg font-bold">
+              <Calendar className="w-5 h-5 text-indigo-700 flex-shrink-0" />
+              <span>出生時間與地點 (天文真太陽時校正立盤)</span>
+            </div>
+            <span className="text-xs sm:text-sm font-bold px-2.5 py-1 rounded-lg bg-indigo-200/70 text-indigo-950">
+              經緯度時差 + 天文均時差 (EOT)
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label htmlFor="bazi-birth-date" className="block text-sm font-bold text-slate-900 mb-1.5">
-                出生日期
+                公曆出生日期
               </label>
               <div className="relative">
                 <input
@@ -322,7 +396,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
 
             <div>
               <label htmlFor="bazi-birth-time" className="block text-sm font-bold text-slate-900 mb-1.5">
-                出生時間
+                鐘錶出生時間 (標準時)
               </label>
               <div className="relative">
                 <input
@@ -335,9 +409,151 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
                 <Clock className="absolute left-3 top-3.5 w-5 h-5 text-indigo-600 pointer-events-none" />
               </div>
             </div>
+
+            <div>
+              <label htmlFor="bazi-birth-place" className="block text-sm font-bold text-slate-900 mb-1.5">
+                出生地點 (經度校正)
+              </label>
+              <div className="relative">
+                <select
+                  id="bazi-birth-place"
+                  value={birthPlace}
+                  onChange={(e) => setBirthPlace(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 border border-indigo-300 rounded-xl text-base bg-white text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:border-transparent outline-none"
+                >
+                  {CITY_GROUPS.map((group) => (
+                    <optgroup key={group.groupName} label={group.groupName}>
+                      {group.cities.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  <optgroup label="自訂經度 (Custom)">
+                    <option value="custom">自訂出生地經度 (Custom Longitude)</option>
+                  </optgroup>
+                </select>
+                <MapPin className="absolute left-3 top-3.5 w-5 h-5 text-indigo-600 pointer-events-none" />
+              </div>
+            </div>
           </div>
+
+          {/* 若選擇自訂經度 */}
+          {birthPlace === 'custom' && (
+            <div className="p-4 bg-white rounded-xl border border-indigo-200 animate-fade-in space-y-2">
+              <label htmlFor="bazi-custom-lng" className="block text-sm font-bold text-slate-900">
+                自訂出生地經度 (-180° 至 180°，東經為正，西經為負)
+              </label>
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <input
+                    id="bazi-custom-lng"
+                    type="number"
+                    step="0.01"
+                    min="-180"
+                    max="180"
+                    value={customLng}
+                    onChange={(e) => setCustomLng(e.target.value)}
+                    placeholder="例如：121.57 (台北), 114.17 (香港), -122.42 (舊金山)"
+                    className={`w-full pl-10 pr-4 py-2.5 border rounded-xl text-base bg-white text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 ${
+                      formErrors.customLng ? 'border-rose-500 bg-rose-50' : 'border-indigo-300'
+                    }`}
+                  />
+                  <Compass className="absolute left-3 top-3 w-4 h-4 text-indigo-600 pointer-events-none" />
+                </div>
+              </div>
+              {formErrors.customLng && (
+                <p className="text-rose-700 font-bold text-sm mt-1">{formErrors.customLng}</p>
+              )}
+            </div>
+          )}
+
           {formErrors.birthDate && (
             <p className="text-rose-700 font-bold text-sm mt-1">{formErrors.birthDate}</p>
+          )}
+
+          {/* 真太陽時校正即時預覽面板 (Real-time True Solar Time Preview) */}
+          {formData.baziMeta?.solarTimeInfo && (
+            <div className="bg-white/95 p-4 sm:p-5 rounded-xl border border-indigo-200/90 shadow-sm animate-fade-in space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <SunMedium className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                  <span className="font-bold text-slate-950 text-base">
+                    真太陽時天文校正結果 (即時計算)
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-100 text-indigo-950 border border-indigo-200">
+                    時柱以真太陽時精準立盤
+                  </span>
+                  {formData.baziMeta.solarTimeInfo.ziHourType === 'early_zi' && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-950 border border-sky-300">
+                      早子時 (00:00 - 00:59)
+                    </span>
+                  )}
+                  {formData.baziMeta.solarTimeInfo.ziHourType === 'late_zi' && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-950 border border-purple-300">
+                      夜子時 / 晚子時 (23:00 - 23:59 子正換日)
+                    </span>
+                  )}
+                  {formData.baziMeta.solarTimeInfo.dayShift !== 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-950 border border-amber-300">
+                      校正跨日 ({formData.baziMeta.solarTimeInfo.dayShift > 0 ? '+1天' : '-1天'})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div className="text-xs text-slate-700 font-bold mb-0.5">鐘錶 ➔ 真太陽時</div>
+                  <div className="text-sm sm:text-base font-extrabold text-indigo-950 font-mono">
+                    {formData.baziMeta.solarTimeInfo.originalTime} ➔ {formData.baziMeta.solarTimeInfo.solarTime}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div className="text-xs text-slate-700 font-bold mb-0.5">經度時差</div>
+                  <div className="text-sm sm:text-base font-extrabold text-slate-900 font-mono">
+                    {formData.baziMeta.solarTimeInfo.offsets.lngOffsetMinutes >= 0 ? '+' : ''}
+                    {formData.baziMeta.solarTimeInfo.offsets.lngOffsetMinutes.toFixed(1)} 分
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-medium">
+                    {formData.baziMeta.solarTimeInfo.location.lng >= 0 ? `${formData.baziMeta.solarTimeInfo.location.lng}°E` : `${Math.abs(formData.baziMeta.solarTimeInfo.location.lng)}°W`}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div className="text-xs text-slate-700 font-bold mb-0.5">天文均時差 (EOT)</div>
+                  <div className="text-sm sm:text-base font-extrabold text-slate-900 font-mono">
+                    {formData.baziMeta.solarTimeInfo.offsets.eotMinutes >= 0 ? '+' : ''}
+                    {formData.baziMeta.solarTimeInfo.offsets.eotMinutes.toFixed(1)} 分
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-medium">軌道離心校正</div>
+                </div>
+
+                <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  <div className="text-xs text-slate-700 font-bold mb-0.5">真太陽時合計偏移</div>
+                  <div className={`text-sm sm:text-base font-extrabold font-mono ${
+                    formData.baziMeta.solarTimeInfo.offsets.totalOffsetMinutes >= 0 ? 'text-emerald-700' : 'text-blue-700'
+                  }`}>
+                    {formData.baziMeta.solarTimeInfo.offsets.totalOffsetMinutes >= 0 ? '+' : ''}
+                    {formData.baziMeta.solarTimeInfo.offsets.totalOffsetMinutes.toFixed(1)} 分
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-medium">
+                    {formData.baziMeta.solarTimeInfo.shichenBranch}時立盤
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-700 font-medium leading-relaxed bg-indigo-50/60 p-2.5 rounded-lg border border-indigo-100 flex items-start gap-1.5">
+                <Compass className="w-4 h-4 text-indigo-700 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>立盤說明：</strong>{formData.baziMeta.solarTimeInfo.offsets.description}。經緯度時差會直接改變時辰交界（如早夜子時、時支切換）與紫微斗數命宮，已為您完成高精度天文立盤。
+                </span>
+              </div>
+            </div>
           )}
         </div>
 
@@ -596,7 +812,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
                   {activeProviderMeta.name} API 金鑰 (API Key)
                 </label>
                 <span className="text-sm text-slate-700 font-semibold bg-slate-100 px-2.5 py-1 rounded-md">
-                  填入 demo 可免金鑰體驗本地數據
+                  金鑰僅留存在瀏覽器本地端
                 </span>
               </div>
               <div className="relative">
@@ -716,9 +932,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
                     value={formData.modelName}
                     onChange={handleChange}
                     placeholder={
-                      isDemoMode
-                        ? 'demo-model'
-                        : fetchedModels.length === 0
+                      fetchedModels.length === 0
                         ? '請輸入模型名稱，或填寫 Key 後點擊「獲取最新模型列表」'
                         : '例如：gpt-4o, claude-3-7-sonnet, grok-2-latest...'
                     }

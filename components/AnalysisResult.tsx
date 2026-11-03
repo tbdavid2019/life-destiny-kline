@@ -14,6 +14,7 @@ import {
   Compass,
   Sparkles,
   Flame,
+  MapPin,
 } from 'lucide-react';
 
 interface AnalysisResultProps {
@@ -141,6 +142,58 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({ analysis, baziMeta }) =
               </span>
             </div>
           </div>
+
+          {/* 真太陽時天文立盤校正資訊 */}
+          {baziMeta.solarTimeInfo && (
+            <div className="bg-slate-900/90 p-4 rounded-2xl border border-indigo-400/30 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs sm:text-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-indigo-500/20 text-indigo-300 rounded-lg border border-indigo-400/30 flex-shrink-0">
+                  <MapPin className="w-4 h-4 text-indigo-300" />
+                </div>
+                <div>
+                  <div className="font-bold text-indigo-200 flex items-center gap-2">
+                    <span>出生地：{baziMeta.solarTimeInfo.place}</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-mono font-semibold">
+                      {baziMeta.solarTimeInfo.location.lng >= 0
+                        ? `${baziMeta.solarTimeInfo.location.lng}°E`
+                        : `${Math.abs(baziMeta.solarTimeInfo.location.lng)}°W`}
+                    </span>
+                    <span className="text-[11px] px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/30 font-semibold">
+                      時柱以真太陽時精準立盤
+                    </span>
+                  </div>
+                  <div className="text-slate-300 text-xs mt-0.5 flex flex-wrap items-center gap-1.5">
+                    <span>鐘錶標準時 <strong className="font-mono text-amber-200">{baziMeta.solarTimeInfo.originalTime}</strong></span>
+                    <span>➔</span>
+                    <span>真太陽時 <strong className="font-mono text-emerald-300">{baziMeta.solarTimeInfo.solarTime}</strong></span>
+                    {baziMeta.solarTimeInfo.dayShift !== 0 && (
+                      <span className="text-amber-300 font-bold">
+                        ({baziMeta.solarTimeInfo.dayShift > 0 ? '+1天' : '-1天'})
+                      </span>
+                    )}
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-300">
+                      【{baziMeta.solarTimeInfo.shichenBranch}時】
+                      {baziMeta.solarTimeInfo.ziHourType === 'early_zi' && '（早子時）'}
+                      {baziMeta.solarTimeInfo.ziHourType === 'late_zi' && '（夜子時）'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300">
+                  經度差：<strong className="text-amber-200 font-mono">{baziMeta.solarTimeInfo.offsets.lngOffsetMinutes >= 0 ? '+' : ''}{baziMeta.solarTimeInfo.offsets.lngOffsetMinutes.toFixed(1)}m</strong>
+                </span>
+                <span className="px-2.5 py-1 bg-white/5 border border-white/10 rounded-lg text-slate-300">
+                  均時差(EOT)：<strong className="text-amber-200 font-mono">{baziMeta.solarTimeInfo.offsets.eotMinutes >= 0 ? '+' : ''}{baziMeta.solarTimeInfo.offsets.eotMinutes.toFixed(1)}m</strong>
+                </span>
+                <span className="px-2.5 py-1 bg-emerald-950/80 border border-emerald-500/40 rounded-lg text-emerald-300 font-bold">
+                  合計偏移：<strong className="font-mono">{baziMeta.solarTimeInfo.offsets.totalOffsetMinutes >= 0 ? '+' : ''}{baziMeta.solarTimeInfo.offsets.totalOffsetMinutes.toFixed(1)}m</strong>
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* 四柱八字盤（十神、干支、納音） */}
           <div className="grid grid-cols-4 gap-3 md:gap-6 text-center">

@@ -53,7 +53,7 @@ npm run build
 ## ⚙️ 環境配置與使用說明 (BYOK 模型)
 
 本專案為純前端單頁應用程式 (Client-Side SPA)，採用 **BYOK (Bring Your Own Key)** 安全架構：
-- 使用者在瀏覽器中直接輸入個人 API Key（或輸入 `demo` 體驗離線模擬數據）。
+- 使用者在瀏覽器中直接輸入個人 API Key（BYOK 自備金鑰架構，保護隱私不落地）。
 - API Key 僅保存在使用者的瀏覽器 `localStorage` 中，不會上傳到任何第三方託管服務器。
 - **重要安全提示**：純前端靜態建置不應將私有 API Key（如 `VITE_API_KEY`）打包至公開靜態資源中。
 

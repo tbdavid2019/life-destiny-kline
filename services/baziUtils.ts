@@ -1,5 +1,6 @@
 import pkg from 'lunar-javascript';
 const { Solar } = pkg;
+import { calculateTrueSolarTime, SolarTimeCorrectionResult } from './solarTime';
 
 export const STEMS = ['甲', '乙', '丙', '丁', '戊', '己', '庚', '辛', '壬', '癸'];
 export const BRANCHES = ['子', '丑', '寅', '卯', '辰', '巳', '午', '未', '申', '酉', '戌', '亥'];
@@ -221,6 +222,10 @@ export interface BaziCalculationResult {
   startAge: number;
   firstDaYun: string;
 
+  // 出生地與真太陽時校正結果
+  solarTimeInfo?: SolarTimeCorrectionResult;
+  birthPlace?: string;
+
   // 八字子平深度命理推演
   dayMaster: string;          // 日主 (如 丙火)
   dayMasterElement: string;   // 木、火、土、金、水
@@ -261,21 +266,42 @@ export interface BaziCalculationResult {
   };
 }
 
+export interface BaziCalculationOptions {
+  birthPlace?: string;
+  customLongitude?: number;
+  customLatitude?: number;
+}
+
 /**
  * 結合子平八字與紫微斗數三合派的完整天文曆法排盤計算
+ * 經真太陽時與天文均時差 (EOT) 校正
  */
-export const calculateBazi = (birthDate: Date, gender: number): BaziCalculationResult => {
+export const calculateBazi = (
+  birthDate: Date,
+  gender: number,
+  options?: BaziCalculationOptions
+): BaziCalculationResult => {
   if (!birthDate || isNaN(birthDate.getTime())) {
     throw new Error('無效的出生日期時間');
   }
 
-  const year = birthDate.getFullYear();
-  const month = birthDate.getMonth() + 1;
-  const day = birthDate.getDate();
-  const hour = birthDate.getHours();
-  const minute = birthDate.getMinutes();
+  const rawHour = birthDate.getHours();
+  const rawMinute = birthDate.getMinutes();
 
-  const solar = Solar.fromYmdHms(year, month, day, hour, minute, 0);
+  // 1. 進行天文真太陽時校正 (鐘錶時間 + 經度時差 + 天文均時差 EOT)
+  const solarTimeInfo = calculateTrueSolarTime({
+    date: birthDate,
+    hour: rawHour,
+    minute: rawMinute,
+    place: options?.birthPlace || '臺北市',
+    longitude: options?.customLongitude,
+    latitude: options?.customLatitude,
+  });
+
+  const { solarYear, solarMonth, solarDay, solarHour, solarMinute } = solarTimeInfo;
+
+  // 2. 以校正後的真太陽時年月日時分進行天文八字與紫微排盤
+  const solar = Solar.fromYmdHms(solarYear, solarMonth, solarDay, solarHour, solarMinute, 0);
   const lunar = solar.getLunar();
   const eightChar = lunar.getEightChar();
 
@@ -508,5 +534,7 @@ export const calculateBazi = (birthDate: Date, gender: number): BaziCalculationR
     ziweiShenZhu,
     ziweiMingGongStars,
     ziweiSiHua,
+    solarTimeInfo,
+    birthPlace: options?.birthPlace || '臺北市',
   };
 };

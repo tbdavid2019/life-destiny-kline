@@ -24,14 +24,12 @@ import {
   LineChart,
   Table as TableIcon,
   Compass,
-  PlayCircle,
   ScrollText,
 } from 'lucide-react';
 
 export type AppRoute =
   | 'new'
   | 'import'
-  | 'demo'
   | 'result'
   | 'kline'
   | 'years'
@@ -53,7 +51,7 @@ export const parseHashRoute = (hash: string): { route: AppRoute; sharePayload?: 
 
   const mainPath = cleanHash.split('?')[0].toLowerCase();
   if (mainPath === 'import' || mainPath === 'manual') return { route: 'import' };
-  if (mainPath === 'demo' || mainPath === 'example') return { route: 'demo' };
+  if (mainPath === 'demo' || mainPath === 'example') return { route: 'new' };
   if (mainPath === 'kline' || mainPath === 'chart') return { route: 'kline' };
   if (mainPath === 'years' || mainPath === 'stream' || mainPath === 'table') return { route: 'years' };
   if (mainPath === 'bazi' || mainPath === 'meta' || mainPath === 'pillars') return { route: 'bazi' };
@@ -99,41 +97,9 @@ const App: React.FC = () => {
   const [shareToast, setShareToast] = useState<string | null>(null);
   const [currentRoute, setCurrentRoute] = useState<AppRoute>('new');
 
-  // Load API config and saved results on mount
+  // Load API config and saved user inputs on mount
   const [initialConfig, setInitialConfig] = useState<Partial<UserInput>>({});
-
-  // 載入本地範例演示數據
-  const loadDemoData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const demoResult = await generateLifeAnalysis({
-        gender: Gender.MALE,
-        birthYear: '1981',
-        yearPillar: '辛酉',
-        monthPillar: '戊戌',
-        dayPillar: '丙寅',
-        hourPillar: '甲午',
-        startAge: '8',
-        firstDaYun: '庚寅',
-        name: '範例演示用戶',
-        apiKey: 'demo',
-        modelName: 'gemini-2.5-flash',
-        apiBaseUrl: '',
-      });
-      setResult(demoResult);
-      setUserName('範例演示用戶');
-      setIsEditing(false);
-      safeStorage.setItem('lifekline_saved_result', JSON.stringify(demoResult));
-      safeStorage.setItem('lifekline_user_name', '範例演示用戶');
-      return demoResult;
-    } catch (err: any) {
-      setError('載入範例數據失敗：' + (err.message || '未知錯誤'));
-      return null;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const [lastUserInput, setLastUserInput] = useState<Partial<UserInput>>({});
 
   // 路由直達跳轉器（更新 URL Hash 並觸發相應視圖/錨點）
   const navigateTo = (route: AppRoute, replace = false) => {
@@ -154,15 +120,6 @@ const App: React.FC = () => {
   const handleRouteChange = async (route: AppRoute) => {
     setCurrentRoute(route);
 
-    if (route === 'demo') {
-      if (!result || userName !== '範例演示用戶') {
-        await loadDemoData();
-      } else {
-        setIsEditing(false);
-      }
-      return;
-    }
-
     if (route === 'import') {
       setInputMode('manual');
       setIsEditing(true);
@@ -177,30 +134,28 @@ const App: React.FC = () => {
 
     // 命盤各區塊直達 (kline, years, bazi, analysis, result)
     if (['result', 'kline', 'years', 'bazi', 'analysis'].includes(route)) {
-      let activeResult = result;
-      if (!activeResult) {
-        // 若當前無命盤數據且直接拜訪子路由，自動載入範例演示，讓訪客立即直達
-        activeResult = await loadDemoData();
-      } else {
-        setIsEditing(false);
+      if (!result) {
+        // 若當前無命盤數據且直接拜訪子路由，引導至新排盤輸入
+        navigateTo('new', true);
+        return;
       }
 
-      if (activeResult) {
-        const sectionIdMap: Record<string, string> = {
-          kline: 'kline-section',
-          years: 'stream-years-section',
-          bazi: 'bazi-meta-section',
-          analysis: 'analysis-cards-section',
-        };
-        const targetId = sectionIdMap[route];
-        if (targetId) {
-          setTimeout(() => {
-            const el = document.getElementById(targetId);
-            if (el) {
-              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-          }, 120);
-        }
+      setIsEditing(false);
+
+      const sectionIdMap: Record<string, string> = {
+        kline: 'kline-section',
+        years: 'stream-years-section',
+        bazi: 'bazi-meta-section',
+        analysis: 'analysis-cards-section',
+      };
+      const targetId = sectionIdMap[route];
+      if (targetId) {
+        setTimeout(() => {
+          const el = document.getElementById(targetId);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 120);
       }
     }
   };
@@ -229,7 +184,21 @@ const App: React.FC = () => {
       });
     }
 
-    // 2. 路由監聽與初始化
+    // 2. 恢復上次輸入的表單資料 (生日、時間、地點、性別、姓名等)
+    const savedLastInputStr = safeStorage.getItem('lifekline_last_user_input');
+    if (savedLastInputStr) {
+      try {
+        const parsed = JSON.parse(savedLastInputStr);
+        if (parsed && typeof parsed === 'object') {
+          setLastUserInput(parsed);
+          if (parsed.name && !userName) setUserName(parsed.name);
+        }
+      } catch (e) {
+        console.warn('Failed to parse lifekline_last_user_input', e);
+      }
+    }
+
+    // 3. 路由監聽與初始化
     const syncFromHash = async () => {
       const hash = window.location.hash;
 
@@ -304,6 +273,10 @@ const App: React.FC = () => {
     setError(null);
     setUserName(data.name || '');
 
+    // 儲存上次輸入的完整表單狀態 (生日、時間、性別、姓名、出生地等)
+    setLastUserInput(data);
+    safeStorage.setItem('lifekline_last_user_input', JSON.stringify(data));
+
     // Save config for convenience
     if (data.provider) safeStorage.setItem('lifekline_provider', data.provider);
     safeStorage.setItem('lifekline_api_key', data.apiKey || '');
@@ -330,6 +303,29 @@ const App: React.FC = () => {
       setIsLoading(false);
     }
   };
+
+  // 整合上次輸入的生辰數據與 API 配置，確保「返回修改」時完整還原
+  const mergedFormData = useMemo(() => {
+    return {
+      ...initialConfig,
+      ...lastUserInput,
+      name: lastUserInput.name ?? userName ?? initialConfig.name ?? '',
+      gender: lastUserInput.gender ?? Gender.MALE,
+      birthDate: lastUserInput.birthDate ?? '',
+      birthTime: lastUserInput.birthTime ?? '12:00',
+      birthPlace: lastUserInput.birthPlace ?? '臺北市',
+      customLongitude: lastUserInput.customLongitude,
+      customLatitude: lastUserInput.customLatitude,
+      apiKey: initialConfig.apiKey || lastUserInput.apiKey || '',
+      provider: initialConfig.provider || lastUserInput.provider,
+      modelName: initialConfig.modelName || lastUserInput.modelName,
+      apiBaseUrl: initialConfig.apiBaseUrl || lastUserInput.apiBaseUrl,
+      awsAccessKeyId: initialConfig.awsAccessKeyId || lastUserInput.awsAccessKeyId,
+      awsSecretAccessKey: initialConfig.awsSecretAccessKey || lastUserInput.awsSecretAccessKey,
+      awsRegion: initialConfig.awsRegion || lastUserInput.awsRegion,
+      awsSessionToken: initialConfig.awsSessionToken || lastUserInput.awsSessionToken,
+    };
+  }, [initialConfig, lastUserInput, userName]);
 
   // 處理手動導入數據
   const handleDataImport = (data: LifeDestinyResult) => {
@@ -376,9 +372,11 @@ const App: React.FC = () => {
     if (window.confirm('確定要清空已保存的命盤數據嗎？')) {
       setResult(null);
       setUserName('');
+      setLastUserInput({});
       setIsEditing(true);
       safeStorage.removeItem('lifekline_saved_result');
       safeStorage.removeItem('lifekline_user_name');
+      safeStorage.removeItem('lifekline_last_user_input');
       navigateTo('new');
     }
   };
@@ -662,19 +660,6 @@ const App: React.FC = () => {
               <span>手動導入</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => navigateTo('demo')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition flex-shrink-0 ${
-                currentRoute === 'demo'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80'
-              }`}
-            >
-              <PlayCircle className="w-4 h-4 text-amber-600" />
-              <span>範例展示</span>
-            </button>
-
             {/* 結果頁面時的直達錨點導航 */}
             {result && !isEditing && (
               <>
@@ -805,19 +790,11 @@ const App: React.FC = () => {
                   <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
                   <span>手動導入</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => navigateTo('demo')}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all text-amber-900 hover:text-amber-950 hover:bg-amber-100/70"
-                >
-                  <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
-                  <span>範例展示</span>
-                </button>
               </div>
             </div>
 
             {inputMode === 'ai' ? (
-              <BaziForm onSubmit={handleBaziSubmit} isLoading={isLoading} initialData={initialConfig} />
+              <BaziForm onSubmit={handleBaziSubmit} isLoading={isLoading} initialData={mergedFormData} />
             ) : (
               <div className="flex flex-col items-center gap-6 w-full">
                 <ImportDataMode onDataImport={handleDataImport} />

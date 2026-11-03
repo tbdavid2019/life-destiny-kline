@@ -1,4 +1,7 @@
 import { BaziCalculationResult } from './services/baziUtils';
+import { SolarTimeCorrectionResult } from './services/solarTime';
+
+export type { SolarTimeCorrectionResult };
 
 export enum Gender {
   MALE = 'Male',
@@ -26,6 +29,11 @@ export interface UserInput {
   name?: string;
   gender: Gender;
   birthYear: string;   // 出生年份 (如 1990)
+  birthDate?: string;  // 公曆出生日期 (YYYY-MM-DD)
+  birthTime?: string;  // 鐘錶出生時間 (HH:mm)
+  birthPlace?: string; // 出生地點 (例如 '臺北市')
+  customLongitude?: number; // 自訂經度 (-180 ~ 180)
+  customLatitude?: number;  // 自訂緯度 (-90 ~ 90)
   yearPillar: string;  // 年柱
   monthPillar: string; // 月柱
   dayPillar: string;   // 日柱
@@ -99,4 +107,6 @@ export interface LifeDestinyResult {
   chartData: KLinePoint[];
   analysis: AnalysisData;
   baziMeta?: BaziCalculationResult;
+  birthPlace?: string;
+  solarTimeInfo?: SolarTimeCorrectionResult;
 }
