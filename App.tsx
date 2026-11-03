@@ -215,6 +215,7 @@ const App: React.FC = () => {
 
     const exportData = {
       bazi: result.analysis.bazi,
+      baziMeta: result.baziMeta,
       summary: result.analysis.summary,
       summaryScore: result.analysis.summaryScore,
       personality: result.analysis.personality,
@@ -646,9 +647,9 @@ const App: React.FC = () => {
             {/* 需求 1：幾歲幾歲的流年詳批內容直接在前端完整展示 */}
             <StreamYearsViewer data={result.chartData} />
 
-            {/* 命盤總評與各項分析卡片 */}
+            {/* 命盤總評與各項分析卡片（包含正統子平與紫微雙盤底蘊元盤） */}
             <section id="analysis-result-container">
-              <AnalysisResult analysis={result.analysis} />
+              <AnalysisResult analysis={result.analysis} baziMeta={result.baziMeta} />
             </section>
 
             {/* 專用列印全表 (僅在瀏覽器列印模式輸出完整 1-100 歲) */}

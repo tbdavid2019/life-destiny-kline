@@ -4,6 +4,8 @@ declare module 'lunar-javascript' {
     getLunar(): Lunar;
   }
   export class Lunar {
+    getMonth(): number;
+    getDay(): number;
     getEightChar(): EightChar;
   }
   export class EightChar {

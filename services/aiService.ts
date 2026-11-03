@@ -2,6 +2,12 @@ import { UserInput, LifeDestinyResult, Gender } from "../types";
 import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 import { signAwsRequest } from "./awsSigV4";
 import { getDefaultBaseUrl } from "./modelService";
+import {
+  calculateBazi,
+  BaziCalculationResult,
+  STEM_ELEMENT,
+  BRANCH_ELEMENT,
+} from "./baziUtils";
 
 // Helper to extract JSON from text that might contain markdown or other noise
 export const extractJson = (text: string): string => {
@@ -159,11 +165,51 @@ export function completeChartPoints(
 }
 
 /**
- * 智能校準流年 K 線分數與形態
- * 解決 LLM 常見的「阿諛奉承偏見 / 向上飄移失真」（即成年與晚年全盤躺平在 90-100 分、滿分泛濫）
- * 保證符合八字大運週期、自然起伏與真實金融 K 線連續性。
+ * 計算流年干支與大運五行對八字喜用/忌神的生剋加成 (喜用 +4~+12, 忌神 -4~-12)
  */
-export function harmonizeDestinyScores(points: any[]): any[] {
+function calcFiveElementModifier(ganZhi: string, daYun: string, baziMeta?: BaziCalculationResult): number {
+  if (!baziMeta || !baziMeta.usefulElements || !baziMeta.tabooElements) return 0;
+  let mod = 0;
+
+  // 大運五行干支影響 (代表 10 年大週期)
+  const cleanDaYun = (daYun || '').replace(/[^\u4e00-\u9fa5]/g, '');
+  if (cleanDaYun.length >= 2 && cleanDaYun !== '童限') {
+    const dyStem = cleanDaYun.charAt(0);
+    const dyBranch = cleanDaYun.charAt(1);
+    const dyStemElem = STEM_ELEMENT[dyStem];
+    const dyBranchElem = BRANCH_ELEMENT[dyBranch];
+
+    if (dyStemElem && baziMeta.usefulElements.includes(dyStemElem)) mod += 4;
+    else if (dyStemElem && baziMeta.tabooElements.includes(dyStemElem)) mod -= 4;
+
+    if (dyBranchElem && baziMeta.usefulElements.includes(dyBranchElem)) mod += 5;
+    else if (dyBranchElem && baziMeta.tabooElements.includes(dyBranchElem)) mod -= 5;
+  }
+
+  // 流年干支影響 (代表 1 年小週期)
+  const cleanGanZhi = (ganZhi || '').replace(/[^\u4e00-\u9fa5]/g, '');
+  if (cleanGanZhi.length >= 2) {
+    const yrStem = cleanGanZhi.charAt(cleanGanZhi.length - 2);
+    const yrBranch = cleanGanZhi.charAt(cleanGanZhi.length - 1);
+    const yrStemElem = STEM_ELEMENT[yrStem];
+    const yrBranchElem = BRANCH_ELEMENT[yrBranch];
+
+    if (yrStemElem && baziMeta.usefulElements.includes(yrStemElem)) mod += 2;
+    else if (yrStemElem && baziMeta.tabooElements.includes(yrStemElem)) mod -= 2;
+
+    if (yrBranchElem && baziMeta.usefulElements.includes(yrBranchElem)) mod += 3;
+    else if (yrBranchElem && baziMeta.tabooElements.includes(yrBranchElem)) mod -= 3;
+  }
+
+  return mod;
+}
+
+/**
+ * 智能校準流年 K 線分數與形態
+ * 結合子平八字五行喜用神/忌神與大運流年生剋，保證命理規律與金融 K 線走勢自然起伏
+ * 徹底解決 LLM 常見的「阿諛奉承偏見 / 向上飄移失真」（即成年與晚年全盤躺平在 90-100 分、滿分泛濫）。
+ */
+export function harmonizeDestinyScores(points: any[], baziMeta?: BaziCalculationResult): any[] {
   if (!points || !Array.isArray(points) || points.length === 0) return points;
 
   const rawScores = points.map((p) => Number(p.score) || Number(p.close) || 50);
@@ -190,11 +236,16 @@ export function harmonizeDestinyScores(points: any[]): any[] {
   });
 
   if (!isHighPlateau) {
-    // 數據整體分佈尚可，但仍需進行 K 線連續性與唯一巔峰平滑
-    let prevClose = Number(points[0].open) || 50;
+    // 數據整體分佈尚可，但仍需進行五行微調、K 線連續性與唯一巔峰平滑
+    const initialRawOpen = Number(points[0]?.open);
+    let prevClose = Number.isFinite(initialRawOpen) ? initialRawOpen : 50;
 
     return points.map((p, idx) => {
-      let score = Number(p.score) || 50;
+      const rawScore = Number(p.score);
+      let score = Number.isFinite(rawScore) ? rawScore : 50;
+      const elemMod = calcFiveElementModifier(p.ganZhi, p.daYun, baziMeta);
+      score = Math.max(30, Math.min(95, score + Math.round(elemMod * 0.4)));
+
       // 避免多個 98-100 分泛濫，只有唯一巔峰保留 96-98，其餘 95 以上壓制到 86-92
       if (score >= 95) {
         if (idx === bestPeakIdx) {
@@ -210,12 +261,16 @@ export function harmonizeDestinyScores(points: any[]): any[] {
         score = Math.round(58 + (score - 78) * 0.4);
       }
 
-      let open = idx === 0 ? Number(p.open) || score - 2 : Math.round((Number(p.open) + prevClose) / 2);
+      const rawOpen = Number(p.open);
+      const validOpen = Number.isFinite(rawOpen) ? rawOpen : prevClose;
+      let open = idx === 0 ? (Number.isFinite(rawOpen) ? rawOpen : score - 2) : Math.round((validOpen + prevClose) / 2);
       let close = score;
       prevClose = close;
 
-      const high = Math.max(Number(p.high) || close, Math.max(open, close) + 2);
-      const low = Math.min(Number(p.low) || close, Math.min(open, close) - 2);
+      const rawHigh = Number(p.high);
+      const rawLow = Number(p.low);
+      const high = Math.max(Number.isFinite(rawHigh) ? rawHigh : close, Math.max(open, close) + 2);
+      const low = Math.min(Number.isFinite(rawLow) ? rawLow : close, Math.min(open, close) - 2);
 
       return {
         ...p,
@@ -228,7 +283,7 @@ export function harmonizeDestinyScores(points: any[]): any[] {
     });
   }
 
-  // 針對高位躺平失真的數據進行重塑映射（保留原始相對強弱位次與詳批內容，重塑命理自然起伏波動）
+  // 針對高位躺平失真的數據進行重塑映射（結合八字五行喜忌加成與自然起伏波動）
   const range = maxRaw - minRaw || 1;
   let prevClose = 52;
 
@@ -238,7 +293,7 @@ export function harmonizeDestinyScores(points: any[]): any[] {
     const relativeRank = (rawScores[idx] - minRaw) / range;
 
     // 大運 10 年一個波段週期 (大運交替帶來的牛市與熊市起伏)
-    const daYunCycle = Math.sin((age / 10) * Math.PI) * 12 + Math.cos((age / 5) * Math.PI) * 5;
+    const daYunCycle = Math.sin((age / 10) * Math.PI) * 10 + Math.cos((age / 5) * Math.PI) * 4;
 
     // 年齡基礎水位
     let baseLevel = 55;
@@ -248,8 +303,11 @@ export function harmonizeDestinyScores(points: any[]): any[] {
     else if (age <= 70) baseLevel = 60; // 花甲收成
     else baseLevel = 54; // 晚年安泰
 
+    // 五行喜忌加成
+    const elemMod = calcFiveElementModifier(p.ganZhi, p.daYun, baziMeta);
+
     // 計算重塑後的分數
-    let calibratedScore = Math.round(baseLevel + daYunCycle + (relativeRank - 0.5) * 22);
+    let calibratedScore = Math.round(baseLevel + daYunCycle + (relativeRank - 0.5) * 16 + elemMod);
 
     // 晚年（70歲後）溫和收斂，避免破百
     if (age > 70) {
@@ -314,6 +372,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
   if (cleanApiKey.toLowerCase() === 'demo') {
     console.log('🎯 使用本地演示模式');
     const mockData = await fetch('/mock-data.json').then(r => r.json());
+    const demoBaziMeta = input.baziMeta || calculateBazi(new Date(1981, 9, 15, 12, 0), 1);
     return {
       chartData: mockData.chartPoints,
       analysis: {
@@ -339,6 +398,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
         cryptoYear: mockData.cryptoYear || "待定",
         cryptoStyle: mockData.cryptoStyle || "現貨定投",
       },
+      baziMeta: demoBaziMeta,
     };
   }
 
@@ -373,6 +433,12 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
 
   const genderStr = input.gender === Gender.MALE ? '男 (乾造)' : '女 (坤造)';
   const startAgeInt = parseInt(input.startAge) || 1;
+  const bYear = parseInt(input.birthYear) || 1990;
+  const genderNum = input.gender === Gender.MALE ? 1 : 0;
+
+  // 正統天文曆法排盤：子平真詮十神旺衰 + 紫微斗數十四主星生年四化元盤
+  const baziMeta: BaziCalculationResult =
+    input.baziMeta || calculateBazi(new Date(bYear, 5, 15, 12, 0), genderNum);
 
   // Calculate Da Yun Direction accurately
   const yearStemPolarity = getStemPolarity(input.yearPillar);
@@ -403,6 +469,25 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     日柱：${input.dayPillar}
     時柱：${input.hourPillar}
     
+    【正統子平八字與紫微斗數 命理鐵律參數（經天文曆法與子平真詮嚴密推算）】
+    - 日主旺衰：${baziMeta.dayMaster} (${baziMeta.strength}) - ${baziMeta.strengthReason}
+    - 核心格局：${baziMeta.geJu} (${baziMeta.geJuDescription})
+    - 喜用神：${baziMeta.usefulGod} (五行喜：${baziMeta.usefulElements.join('、')})
+    - 忌仇神：${baziMeta.tabooGod} (五行忌：${baziMeta.tabooElements.join('、')})
+    - 四柱十神：年柱[${baziMeta.tenGods.year}]、月柱[${baziMeta.tenGods.month}]、日柱[${baziMeta.tenGods.day}]、時柱[${baziMeta.tenGods.hour}]
+    - 四柱納音：年[${baziMeta.nayinPillars.year}]、月[${baziMeta.nayinPillars.month}]、日[${baziMeta.nayinPillars.day}]、時[${baziMeta.nayinPillars.hour}]
+    - 命帶神煞：${baziMeta.shenshaList.join('、')}
+    - 紫微斗數格局：${baziMeta.ziweiBureau}，命宮在【${baziMeta.ziweiMingGongBranch}】，身宮在【${baziMeta.ziweiShenGongBranch}】
+    - 紫微命宮主星：${baziMeta.ziweiMingGongStars.join('、') || '命無正曜（借對宮）'}
+    - 命主身主：命主【${baziMeta.ziweiMingZhu}】，身主【${baziMeta.ziweiShenZhu}】
+    - 生年四化：化祿[${baziMeta.ziweiSiHua.lu}]、化權[${baziMeta.ziweiSiHua.quan}]、化科[${baziMeta.ziweiSiHua.ke}]、化忌[${baziMeta.ziweiSiHua.ji}]
+
+    【命理推演鐵律】
+    1. 嚴格依據【日主旺衰】與【喜用/忌神】論斷各步大運與流年吉凶，不得盲目吹捧。
+       - 凡逢【喜用神五行】(${baziMeta.usefulElements.join('、')}) 大運流年，運勢顯著向上突破（評分約 75-92 分）。
+       - 凡逢【忌神五行】(${baziMeta.tabooElements.join('、')}) 大運流年，多逢考驗或沉潛修身（評分約 40-65 分），嚴禁全盤躺平在 90 分以上。
+    2. 紫微星曜結合：命宮主星（${baziMeta.ziweiMingGongStars.join('、') || '命無正曜'}）與生年四化特質需深度融入性格、職業與理財批斷中。
+
     【大運核心參數】
     1. 起運年齡：${input.startAge} 歲 (虛歲)。
     2. 第一步大運：${input.firstDaYun}。
@@ -508,8 +593,8 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     // 自動補足 1-100 歲流年資料（避免模型提早中斷）
     const fullPoints = completeChartPoints(sanitizedPoints, birthYearNum, startAgeInt, input.firstDaYun);
 
-    // 智能校準流年 K 線分數與形態，消除模型阿諛漂移與高位躺平失真
-    const harmonizedPoints = harmonizeDestinyScores(fullPoints);
+    // 智能校準流年 K 線分數與形態，消除模型阿諛漂移與高位躺平失真（結合子平八字五行加成）
+    const harmonizedPoints = harmonizeDestinyScores(fullPoints, baziMeta);
 
     return {
       chartData: harmonizedPoints,
@@ -537,6 +622,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
         cryptoYear: analysisSource.cryptoYear || "待定",
         cryptoStyle: analysisSource.cryptoStyle || "現貨定投",
       },
+      baziMeta,
     };
   } catch (error) {
     console.error("AI Generation Error:", error);

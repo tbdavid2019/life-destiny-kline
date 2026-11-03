@@ -104,6 +104,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           hourPillar: result.hourPillar,
           startAge: result.startAge.toString(),
           firstDaYun: result.firstDaYun,
+          baziMeta: result,
         }));
       } catch (err) {
         console.error('Bazi calculation failed', err);
@@ -340,37 +341,85 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           )}
         </div>
 
-        {/* 自動排盤結果預覽 */}
+        {/* 自動排盤結果預覽 (子平八字 + 紫微斗數雙盤底蘊) */}
         {formData.yearPillar && (
-          <div className="bg-amber-50 p-5 rounded-2xl border border-amber-300 animate-fade-in space-y-3">
-            <div className="flex items-center gap-2.5 text-amber-950 text-base font-bold">
-              <Sparkles className="w-5 h-5 text-amber-700 flex-shrink-0" />
-              <span>八字自動排盤預覽</span>
+          <div className="bg-amber-50/80 p-5 sm:p-6 rounded-2xl border border-amber-300 animate-fade-in space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-amber-950 text-base font-bold border-b border-amber-200/80 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-700 flex-shrink-0" />
+                <span className="text-lg">八字與紫微命理底層元盤預覽</span>
+              </div>
+              {formData.baziMeta && (
+                <div className="flex flex-wrap gap-2 text-xs sm:text-sm font-bold">
+                  <span className="px-2.5 py-1 bg-amber-200/80 text-amber-950 rounded-lg">
+                    {formData.baziMeta.dayMaster} · {formData.baziMeta.strength}
+                  </span>
+                  <span className="px-2.5 py-1 bg-indigo-100 text-indigo-950 rounded-lg">
+                    {formData.baziMeta.geJu}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-4 gap-2.5 text-center">
+            {/* 四柱八字 + 納音 + 十神 */}
+            <div className="grid grid-cols-4 gap-2 sm:gap-3 text-center">
               {[
-                { label: '年柱', val: formData.yearPillar },
-                { label: '月柱', val: formData.monthPillar },
-                { label: '日柱', val: formData.dayPillar },
-                { label: '時柱', val: formData.hourPillar },
+                { label: '年柱', val: formData.yearPillar, god: formData.baziMeta?.tenGods?.year, nayin: formData.baziMeta?.nayinPillars?.year },
+                { label: '月柱', val: formData.monthPillar, god: formData.baziMeta?.tenGods?.month, nayin: formData.baziMeta?.nayinPillars?.month },
+                { label: '日柱', val: formData.dayPillar, god: formData.baziMeta?.tenGods?.day, nayin: formData.baziMeta?.nayinPillars?.day },
+                { label: '時柱', val: formData.hourPillar, god: formData.baziMeta?.tenGods?.hour, nayin: formData.baziMeta?.nayinPillars?.hour },
               ].map((p) => (
-                <div key={p.label} className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm">
-                  <div className="text-sm text-slate-800 font-bold mb-1">{p.label}</div>
-                  <div className="text-xl sm:text-2xl font-serif-sc font-extrabold text-amber-950">
+                <div key={p.label} className="bg-white p-3 rounded-xl border border-amber-200 shadow-sm flex flex-col justify-between">
+                  <div className="text-xs sm:text-sm text-slate-600 font-bold mb-0.5">{p.label}</div>
+                  {p.god && <div className="text-xs text-indigo-800 font-bold mb-1">{p.god}</div>}
+                  <div className="text-xl sm:text-2xl font-serif-sc font-extrabold text-amber-950 my-1">
                     {p.val}
                   </div>
+                  {p.nayin && <div className="text-[11px] sm:text-xs text-slate-600 font-medium">{p.nayin}</div>}
                 </div>
               ))}
             </div>
 
-            <div className="mt-3 flex flex-wrap justify-between items-center text-sm sm:text-base gap-2 pt-1 border-t border-amber-200/80">
+            {/* 喜用神與紫微雙盤印證資訊 */}
+            {formData.baziMeta && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm bg-white/90 p-4 rounded-xl border border-amber-200/80">
+                <div className="space-y-1.5">
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                    <span>喜用神（牛市動能）：</span>
+                    <strong className="text-emerald-800">{formData.baziMeta.usefulGod}</strong>
+                  </div>
+                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-600" />
+                    <span>忌仇神（熊市壓力）：</span>
+                    <strong className="text-rose-800">{formData.baziMeta.tabooGod}</strong>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 border-t md:border-t-0 md:border-l border-amber-200 pt-2 md:pt-0 md:pl-4">
+                  <div className="font-bold text-slate-900">
+                    紫微命宮：<strong className="text-indigo-950">{formData.baziMeta.ziweiBureau || '命盤'}</strong> · 命坐【{formData.baziMeta.ziweiMingGongBranch || '—'}宮】
+                    （{(formData.baziMeta.ziweiMingGongStars || []).join('、') || '無主星'}）
+                  </div>
+                  <div className="text-xs sm:text-sm text-slate-700 font-medium">
+                    生年四化：祿【{formData.baziMeta.ziweiSiHua?.lu || '—'}】· 權【{formData.baziMeta.ziweiSiHua?.quan || '—'}】· 科【{formData.baziMeta.ziweiSiHua?.ke || '—'}】· 忌【{formData.baziMeta.ziweiSiHua?.ji || '—'}】
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap justify-between items-center text-sm sm:text-base gap-2 pt-1 border-t border-amber-200/80">
               <div className="text-amber-950 font-medium">
                 起運年齡：<strong className="text-slate-950 font-bold">{formData.startAge} 歲</strong>
               </div>
               <div className="text-amber-950 font-medium">
                 首步大運：<strong className="text-slate-950 font-bold">{formData.firstDaYun}</strong>
               </div>
+              {formData.baziMeta?.shenshaList && formData.baziMeta.shenshaList.length > 0 && (
+                <div className="text-xs text-slate-600 font-medium w-full sm:w-auto">
+                  命帶神煞：{formData.baziMeta.shenshaList.slice(0, 5).join(' · ')}
+                </div>
+              )}
             </div>
           </div>
         )}

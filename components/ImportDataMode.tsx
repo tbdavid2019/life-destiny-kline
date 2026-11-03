@@ -77,7 +77,7 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
       // 轉換爲應用所需格式
       const analysisSource = data.analysis || data;
       const result: LifeDestinyResult = {
-        chartData: harmonizeDestinyScores(sanitizedChartPoints),
+        chartData: harmonizeDestinyScores(sanitizedChartPoints, data.baziMeta),
         analysis: {
           bazi: analysisSource.bazi || [],
           summary: analysisSource.summary || '無摘要',
@@ -101,6 +101,7 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
           cryptoYear: analysisSource.cryptoYear || '待定',
           cryptoStyle: analysisSource.cryptoStyle || '現貨定投',
         },
+        baziMeta: data.baziMeta,
       };
 
       onDataImport(result);

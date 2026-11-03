@@ -1,3 +1,5 @@
+import { BaziCalculationResult } from './services/baziUtils';
+
 export enum Gender {
   MALE = 'Male',
   FEMALE = 'Female',
@@ -42,6 +44,9 @@ export interface UserInput {
   awsSecretAccessKey?: string;
   awsRegion?: string;
   awsSessionToken?: string;
+
+  // 正統子平八字與紫微斗數排盤底層元數據
+  baziMeta?: BaziCalculationResult;
 }
 
 export interface KLinePoint {
@@ -93,4 +98,5 @@ export interface AnalysisData {
 export interface LifeDestinyResult {
   chartData: KLinePoint[];
   analysis: AnalysisData;
+  baziMeta?: BaziCalculationResult;
 }
