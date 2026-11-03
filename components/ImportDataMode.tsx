@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LifeDestinyResult } from '../types';
 import { CheckCircle, AlertCircle, Sparkles } from 'lucide-react';
-import { extractJson } from '../services/geminiService';
+import { repairAndParseJson } from '../services/geminiService';
 
 interface ImportDataModeProps {
   onDataImport: (data: LifeDestinyResult) => void;
@@ -21,7 +21,7 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
     }
 
     try {
-      const data = JSON.parse(extractJson(jsonInput));
+      const data = repairAndParseJson(jsonInput);
 
       // 校驗數據結構與完整性
       const points = data.chartPoints || data.chartData;

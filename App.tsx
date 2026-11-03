@@ -376,8 +376,9 @@ const App: React.FC = () => {
        ${analysisHtml}
     </div>
     ${detailedTableHtml}
-    <div class="text-center text-slate-500 text-base py-12 border-t border-gray-200 mt-12 font-medium">
+    <div class="text-center text-slate-500 text-base py-12 border-t border-gray-200 mt-12 font-medium space-y-2">
       <p>&copy; ${now.getFullYear()} 888 人生 K 線項目 | 僅供娛樂與文化研究，請勿迷信</p>
+      <p class="text-sm text-slate-600">技術提供：<a href="https://david888.com" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline font-bold">david888.com</a></p>
     </div>
   </div>
 </body>
@@ -662,8 +663,9 @@ const App: React.FC = () => {
                   ))}
                 </tbody>
               </table>
-              <div className="mt-8 pt-4 border-t border-slate-200 flex justify-between items-center text-sm text-slate-700 font-medium">
+              <div className="mt-8 pt-4 border-t border-slate-200 flex flex-wrap justify-between items-center text-sm text-slate-700 font-medium gap-2">
                 <span>用戶：{userName || '未命名'}</span>
+                <span>技術提供：david888.com</span>
                 <span>生成時間：{new Date().toLocaleString()}</span>
               </div>
             </div>
@@ -673,9 +675,12 @@ const App: React.FC = () => {
 
       {/* 底部 Footer */}
       <footer className="w-full bg-slate-950 text-slate-300 py-8 mt-auto no-print border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 text-center text-base">
+        <div className="max-w-7xl mx-auto px-4 text-center text-base space-y-2">
           <p className="font-medium text-slate-300">
             &copy; {new Date().getFullYear()} 888人生K線 | 僅供娛樂與文化研究，請勿迷信
+          </p>
+          <p className="text-sm sm:text-base text-slate-400 font-medium">
+            技術提供：<a href="https://david888.com" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:text-amber-300 underline font-bold transition">david888.com</a>
           </p>
         </div>
       </footer>
