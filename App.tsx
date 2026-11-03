@@ -449,10 +449,6 @@ const App: React.FC = () => {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm sm:text-base text-slate-900 font-bold bg-slate-100 border border-slate-200 px-4 py-2 rounded-full">
-            <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
-            <span>基於 AI 大模型驅動</span>
-          </div>
         </div>
       </header>
 
