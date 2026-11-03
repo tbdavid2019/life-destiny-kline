@@ -160,43 +160,45 @@ const App: React.FC = () => {
   // 處理手動導入數據
   const handleDataImport = (data: LifeDestinyResult) => {
     setResult(data);
-    setUserName('');
-    setError(null);
     setIsEditing(false);
-
-    // Persist to localStorage
     safeStorage.setItem('lifekline_saved_result', JSON.stringify(data));
-    safeStorage.removeItem('lifekline_user_name');
   };
 
-  // 複製分享連結 (URL Hash)
+  // 生成並複製包含命盤數據的分享網址 (持久存儲至 URL Hash)
   const handleCopyShareLink = async () => {
     if (!result) return;
-
     try {
-      const compressed = await compressData({
+      const compressedHash = await compressData({
+        v: 1,
         userName,
         result,
       });
 
-      const url = `${window.location.origin}${window.location.pathname}#data=${compressed}`;
-      await navigator.clipboard.writeText(url);
+      const url = new URL(window.location.href);
+      url.hash = `share=${compressedHash}`;
+      const shareUrl = url.toString();
 
-      // Update browser URL hash without full reload
-      window.history.replaceState(null, '', `#data=${compressed}`);
+      await navigator.clipboard.writeText(shareUrl);
+      window.history.replaceState(null, '', url.toString());
 
-      setShareToast('分享連結已複製到剪貼簿！包含完整命盤數據，他人打開即可直接查看。');
+      setShareToast('分享連結已複製到剪貼簿！包含完整命盤數據，打開即可還原。');
       setTimeout(() => setShareToast(null), 4000);
     } catch (err) {
-      console.error('Failed to copy share link:', err);
-      setShareToast('複製失敗，請手動複製網址。');
-      setTimeout(() => setShareToast(null), 3000);
+      console.error('Failed to create share link:', err);
+      // Fallback: 至少複製當前 URL
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setShareToast('已複製當前網址！');
+        setTimeout(() => setShareToast(null), 3000);
+      } catch {
+        alert('複製連結失敗，請手動複製網址');
+      }
     }
   };
 
-  // 清空並新起命盤
+  // 清空命盤數據並新起
   const handleClearData = () => {
-    if (window.confirm('確定要清空已保存的命盤與分析數據嗎？清空後將無法復原。')) {
+    if (window.confirm('確定要清空已保存的命盤數據嗎？')) {
       setResult(null);
       setUserName('');
       setIsEditing(false);
@@ -286,38 +288,40 @@ const App: React.FC = () => {
 
     const tableRows = result.chartData
       .map((item) => {
-        const scoreColor = item.close >= item.open ? 'text-green-600' : 'text-red-600';
+        const scoreColor = item.close >= item.open ? 'text-green-700' : 'text-red-700';
         const trendIcon = item.close >= item.open ? '▲' : '▼';
         return `
-        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-          <td class="p-3 border-r border-gray-100 text-center font-mono">${escapeHtml(item.age)}歲</td>
-          <td class="p-3 border-r border-gray-100 text-center font-bold">${escapeHtml(item.year)} ${escapeHtml(item.ganZhi)}</td>
-          <td class="p-3 border-r border-gray-100 text-center text-sm">${escapeHtml(item.daYun || '-')}</td>
-          <td class="p-3 border-r border-gray-100 text-center font-bold ${scoreColor}">
-            ${escapeHtml(item.score)} <span class="text-xs">${trendIcon}</span>
+        <tr class="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+          <td class="p-3.5 border-r border-gray-200 text-center font-mono font-bold text-base text-slate-900">${escapeHtml(item.age)}歲</td>
+          <td class="p-3.5 border-r border-gray-200 text-center font-bold text-base text-slate-950">${escapeHtml(item.year)} ${escapeHtml(item.ganZhi)}</td>
+          <td class="p-3.5 border-r border-gray-200 text-center text-base text-slate-800 font-medium">${escapeHtml(item.daYun || '-')}</td>
+          <td class="p-3.5 border-r border-gray-200 text-center font-extrabold text-base ${scoreColor}">
+            ${escapeHtml(item.score)} <span class="text-sm">${trendIcon}</span>
           </td>
-          <td class="p-3 text-sm text-gray-700 text-justify leading-relaxed">${escapeHtml(item.reason)}</td>
+          <td class="p-3.5 text-base text-slate-900 text-justify leading-relaxed font-normal">${escapeHtml(item.reason)}</td>
         </tr>
       `;
       })
       .join('');
 
     const detailedTableHtml = `
-      <div class="mt-12 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="p-6 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
-           <div class="w-1 h-5 bg-indigo-600 rounded-full"></div>
-           <h3 class="text-xl font-bold text-gray-800 font-serif-sc">流年詳批全表</h3>
-           <span class="text-xs text-gray-500 ml-2">(由於離線網頁無法交互，特此列出所有年份詳情)</span>
+      <div class="mt-12 bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="p-6 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+           <div class="flex items-center gap-2.5">
+             <div class="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
+             <h3 class="text-2xl font-bold text-gray-900 font-serif-sc">流年詳批全表 (1-100歲)</h3>
+           </div>
+           <span class="text-sm text-gray-600 font-medium">(離線完整報告，包含百年每歲詳情)</span>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="bg-gray-100 text-gray-600 text-sm font-bold uppercase tracking-wider">
-                <th class="p-3 border-r border-gray-200 text-center w-20">年齡</th>
-                <th class="p-3 border-r border-gray-200 text-center w-28">流年</th>
-                <th class="p-3 border-r border-gray-200 text-center w-28">大運</th>
-                <th class="p-3 border-r border-gray-200 text-center w-20">評分</th>
-                <th class="p-3">運勢批斷與建議</th>
+              <tr class="bg-gray-100 text-gray-800 text-base font-bold uppercase tracking-wider">
+                <th class="p-3.5 border-r border-gray-200 text-center w-20">年齡</th>
+                <th class="p-3.5 border-r border-gray-200 text-center w-28">流年</th>
+                <th class="p-3.5 border-r border-gray-200 text-center w-28">大運</th>
+                <th class="p-3.5 border-r border-gray-200 text-center w-24">評分</th>
+                <th class="p-3.5">運勢批斷與建議</th>
               </tr>
             </thead>
             <tbody>
@@ -336,34 +340,43 @@ const App: React.FC = () => {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${safeUserName || '用戶'} - 888人生K線命理報告</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700;900&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Inter:wght@400;600&display=swap');
-    body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
-    .font-serif-sc { font-family: 'Noto Serif SC', serif; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background-color: #f8fafc;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .font-serif-sc {
+      font-family: "Noto Serif TC", "Songti TC", "STSong", "PMingLiU", Georgia, serif;
+    }
     svg { width: 100% !important; height: auto !important; }
   </style>
 </head>
-<body class="bg-gray-50 min-h-screen p-4 md:p-12">
+<body class="bg-slate-50 min-h-screen p-4 md:p-12 text-slate-900">
   <div class="max-w-6xl mx-auto space-y-10">
     <div class="text-center border-b border-gray-200 pb-8">
-      <h1 class="text-4xl font-bold font-serif-sc text-gray-900 mb-2">${safeUserName ? safeUserName + '的' : ''}888人生K線命理報告</h1>
-      <p class="text-gray-500 text-sm">生成時間：${escapeHtml(timeString)}</p>
+      <h1 class="text-4xl md:text-5xl font-bold font-serif-sc text-slate-950 mb-3">${safeUserName ? safeUserName + '的' : ''}888人生K線命理報告</h1>
+      <p class="text-slate-600 text-base font-medium">生成時間：${escapeHtml(timeString)}</p>
     </div>
-    <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-      <div class="flex items-center gap-2 mb-6">
-        <div class="w-1 h-6 bg-indigo-600 rounded-full"></div>
-        <h3 class="text-xl font-bold text-gray-800 font-serif-sc">流年大運走勢圖</h3>
+    <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-gray-200">
+      <div class="flex items-center gap-2.5 mb-6">
+        <div class="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
+        <h3 class="text-2xl font-bold text-slate-950 font-serif-sc">流年大運走勢圖</h3>
       </div>
       <div class="w-full overflow-hidden flex justify-center py-4">
         ${chartSvg}
       </div>
-      <p class="text-center text-xs text-gray-400 mt-2">注：圖表K線顏色根據運勢漲跌繪製，數值越高代表運勢越強。</p>
+      <p class="text-center text-sm text-slate-600 mt-3 font-medium">注：圖表K線顏色根據運勢漲跌繪製，數值越高代表運勢越強。</p>
     </div>
     <div class="space-y-8">
        ${analysisHtml}
     </div>
     ${detailedTableHtml}
-    <div class="text-center text-gray-400 text-sm py-12 border-t border-gray-200 mt-12">
+    <div class="text-center text-slate-500 text-base py-12 border-t border-gray-200 mt-12 font-medium">
       <p>&copy; ${now.getFullYear()} 888 人生 K 線項目 | 僅供娛樂與文化研究，請勿迷信</p>
     </div>
   </div>
@@ -392,21 +405,21 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center">
       {/* 頂部導航欄 */}
-      <header className="w-full bg-white border-b border-slate-200 py-5 sticky top-0 z-50 no-print shadow-2xs">
+      <header className="w-full bg-white border-b border-slate-200 py-4 sm:py-5 sticky top-0 z-50 no-print shadow-2xs">
         <div className="max-w-7xl mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-slate-950 text-white p-2 rounded-xl shadow-sm">
+            <div className="bg-slate-950 text-white p-2.5 rounded-xl shadow-sm">
               <Sparkles className="w-6 h-6 text-amber-300" />
             </div>
             <div>
-              <h1 className="text-2xl font-serif-sc font-bold text-slate-900 tracking-wide">888人生K線</h1>
-              <p className="text-xs text-slate-600 font-semibold uppercase tracking-widest">
+              <h1 className="text-2xl sm:text-3xl font-serif-sc font-bold text-slate-950 tracking-wide">888人生K線</h1>
+              <p className="text-sm text-slate-700 font-semibold uppercase tracking-wider">
                 888 Life Destiny K-Line
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs md:text-sm text-slate-800 font-bold bg-slate-100 border border-slate-200 px-3.5 py-1.5 rounded-full">
-            <Sparkles className="w-4 h-4 text-amber-600" />
+          <div className="flex items-center gap-2 text-sm sm:text-base text-slate-900 font-bold bg-slate-100 border border-slate-200 px-4 py-2 rounded-full">
+            <Sparkles className="w-4 h-4 text-amber-600 flex-shrink-0" />
             <span>基於 AI 大模型驅動</span>
           </div>
         </div>
@@ -414,9 +427,9 @@ const App: React.FC = () => {
 
       {/* 分享成功 Toast 提示 */}
       {shareToast && (
-        <div className="fixed top-20 right-4 z-50 max-w-md bg-emerald-950 text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in border border-emerald-700">
+        <div className="fixed top-20 right-4 z-50 max-w-md bg-emerald-950 text-white px-5 py-3.5 rounded-xl shadow-xl flex items-center gap-3 animate-fade-in border border-emerald-700">
           <Check className="w-5 h-5 text-emerald-300 flex-shrink-0" />
-          <p className="text-xs sm:text-sm font-medium">{shareToast}</p>
+          <p className="text-sm sm:text-base font-bold">{shareToast}</p>
         </div>
       )}
 
@@ -426,55 +439,55 @@ const App: React.FC = () => {
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-8 animate-fade-in w-full">
             {/* 若已保存結果但處於返回修改模式，提供顯式的返回查看按鈕 */}
             {result && isEditing && (
-              <div className="w-full max-w-lg bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl flex items-center justify-between gap-3 text-indigo-950">
-                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
-                  <Sparkles className="w-4 h-4 text-indigo-700 flex-shrink-0" />
+              <div className="w-full max-w-2xl bg-indigo-50 border border-indigo-200 p-4 rounded-xl flex flex-wrap items-center justify-between gap-3 text-indigo-950">
+                <div className="flex items-center gap-2.5 text-sm sm:text-base font-bold">
+                  <Sparkles className="w-5 h-5 text-indigo-700 flex-shrink-0" />
                   <span>已保存命盤數據（{userName || '現有結果'}）</span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm sm:text-base font-bold transition flex items-center gap-2 shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
-                  <Eye className="w-3.5 h-3.5" />
+                  <Eye className="w-4 h-4" />
                   <span>查看命盤結果</span>
                 </button>
               </div>
             )}
 
-            <div className="text-center max-w-2xl flex flex-col items-center">
-              <h2 className="text-4xl md:text-5xl font-serif-sc font-bold text-slate-900 mb-6">
+            <div className="text-center max-w-3xl flex flex-col items-center">
+              <h2 className="text-4xl md:text-5xl font-serif-sc font-bold text-slate-950 mb-6 leading-tight">
                 洞悉命運起伏 <br />
                 <span className="text-indigo-700">888 預見人生軌跡</span>
               </h2>
-              <p className="text-slate-700 text-base md:text-lg leading-relaxed mb-8">
-                結合<strong className="text-slate-900">傳統八字命理</strong>與<strong className="text-slate-900">金融可視化技術</strong>，
+              <p className="text-slate-800 text-base md:text-lg leading-relaxed mb-8">
+                結合<strong className="text-slate-950 font-bold">傳統八字命理</strong>與<strong className="text-slate-950 font-bold">金融可視化技術</strong>，
                 將您的一生運勢繪製成類似股票行情的高清 K 線圖與百年流年詳批。
               </p>
 
-              <div className="flex p-1 bg-slate-200 rounded-xl mb-6 w-64 border border-slate-300">
+              <div className="flex p-1.5 bg-slate-200 rounded-xl mb-6 w-72 sm:w-80 border border-slate-300">
                 <button
                   onClick={() => setInputMode('ai')}
                   aria-pressed={inputMode === 'ai'}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
                     inputMode === 'ai'
                       ? 'bg-white text-indigo-950 shadow-sm'
                       : 'text-slate-700 hover:text-slate-950'
                   }`}
                 >
-                  <Cpu className="w-4 h-4" />
+                  <Cpu className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>AI 自動推演</span>
                 </button>
                 <button
                   onClick={() => setInputMode('manual')}
                   aria-pressed={inputMode === 'manual'}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm sm:text-base font-bold transition-all focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
                     inputMode === 'manual'
                       ? 'bg-white text-indigo-950 shadow-sm'
                       : 'text-slate-700 hover:text-slate-950'
                   }`}
                 >
-                  <MessageSquare className="w-4 h-4" />
+                  <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>手動導入</span>
                 </button>
               </div>
@@ -485,16 +498,16 @@ const App: React.FC = () => {
             ) : (
               <div className="flex flex-col items-center gap-6 w-full">
                 <ImportDataMode onDataImport={handleDataImport} />
-                <p className="text-xs text-slate-600 font-medium">
+                <p className="text-sm text-slate-700 font-medium">
                   粘貼 AI 返回的 JSON 數據以生成完整 K 線與百年詳批
                 </p>
               </div>
             )}
 
             {error && (
-              <div className="flex items-center gap-2 text-rose-950 bg-rose-50 px-4 py-3 rounded-xl border border-rose-200 max-w-md w-full animate-bounce-short">
-                <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-700" />
-                <p className="text-sm font-bold">{error}</p>
+              <div className="flex items-center gap-3 text-rose-950 bg-rose-50 px-5 py-4 rounded-xl border border-rose-200 max-w-lg w-full animate-bounce-short">
+                <AlertCircle className="w-6 h-6 flex-shrink-0 text-rose-700" />
+                <p className="text-base font-bold">{error}</p>
               </div>
             )}
           </div>
@@ -504,25 +517,25 @@ const App: React.FC = () => {
         {result && !isEditing && (
           <div className="animate-fade-in space-y-12">
             {/* 結果頁頂部操作工具欄 */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 pb-5 gap-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center border-b border-slate-200 pb-6 gap-5">
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold font-serif-sc text-slate-950 tracking-tight">
+                <h2 className="text-3xl md:text-4xl font-bold font-serif-sc text-slate-950 tracking-tight">
                   {userName ? `${userName}的` : ''} 888 命盤分析報告
                 </h2>
-                <p className="text-xs text-slate-600 mt-1">
+                <p className="text-sm sm:text-base text-slate-700 mt-2 font-medium">
                   數據已自動持久化儲存於瀏覽器，重新整理不會遺失
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2.5 no-print">
+              <div className="flex flex-wrap gap-3 no-print">
                 {/* 複製分享連結 */}
                 <button
                   type="button"
                   onClick={handleCopyShareLink}
                   title="生成並複製包含命盤數據的分享網址"
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-bold text-xs sm:text-sm shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
-                  <Share2 className="w-4 h-4" />
+                  <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>複製分享連結</span>
                 </button>
 
@@ -530,9 +543,9 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportJson}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 text-white rounded-lg hover:bg-emerald-800 transition font-bold text-xs sm:text-sm shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-emerald-700 text-white rounded-xl hover:bg-emerald-800 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:outline-none"
                 >
-                  <FileDown className="w-4 h-4" />
+                  <FileDown className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>導出 JSON</span>
                 </button>
 
@@ -540,9 +553,9 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handlePrint}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-900 transition font-bold text-xs sm:text-sm shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-slate-600 focus-visible:outline-none"
                 >
-                  <Printer className="w-4 h-4" />
+                  <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>列印 / 保存 PDF</span>
                 </button>
 
@@ -550,9 +563,9 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSaveHtml}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-700 text-white rounded-lg hover:bg-indigo-800 transition font-bold text-xs sm:text-sm shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-700 text-white rounded-xl hover:bg-indigo-800 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span>保存離線網頁</span>
                 </button>
 
@@ -560,45 +573,45 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-slate-800 border border-slate-300 rounded-lg hover:bg-slate-100 transition font-bold text-xs sm:text-sm shadow-2xs focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-white text-slate-900 border border-slate-300 rounded-xl hover:bg-slate-100 transition font-bold text-sm sm:text-base shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
                 >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>返回修改 (保留結果)</span>
+                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span>返回修改</span>
                 </button>
 
                 {/* 清空並新起命盤 */}
                 <button
                   type="button"
                   onClick={handleClearData}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 text-rose-950 border border-rose-300 rounded-lg hover:bg-rose-100 transition font-bold text-xs sm:text-sm focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:outline-none"
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 text-rose-950 border border-rose-300 rounded-xl hover:bg-rose-100 transition font-bold text-sm sm:text-base focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:outline-none"
                 >
-                  <Trash2 className="w-4 h-4 text-rose-700" />
-                  <span>清空命盤 (Clear)</span>
+                  <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 text-rose-700" />
+                  <span>清空命盤</span>
                 </button>
               </div>
             </div>
 
             {/* 走勢圖區塊 */}
             <section className="space-y-4 break-inside-avoid">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <div className="flex flex-col gap-2">
+                <h3 className="text-2xl font-bold text-slate-950 flex items-center gap-2.5 font-serif-sc">
                   <span className="w-1.5 h-6 bg-indigo-600 rounded-full" aria-hidden="true" />
                   888 流年大運走勢圖 (100年)
                 </h3>
                 {peakYearItem && (
-                  <p className="text-xs sm:text-sm font-bold text-indigo-950 bg-indigo-50 border border-indigo-200 rounded-md px-2.5 py-1 inline-flex items-center gap-2 self-start mt-1">
-                    <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                  <p className="text-sm sm:text-base font-bold text-indigo-950 bg-indigo-50 border border-indigo-200 rounded-lg px-3.5 py-1.5 inline-flex items-center gap-2 self-start mt-1">
+                    <Trophy className="w-4 h-4 text-amber-600 flex-shrink-0" />
                     <span>
                       人生巔峯年份：{peakYearItem.year}年 ({peakYearItem.ganZhi}) - {peakYearItem.age}歲，評分{' '}
-                      <span className="text-amber-700 text-base font-extrabold">{peakYearItem.high}</span>
+                      <span className="text-amber-800 text-lg font-black">{peakYearItem.high}</span>
                     </span>
                   </p>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-slate-700 mb-2 no-print">
-                <span className="text-emerald-800 font-bold">綠色K線</span> 代表運勢上漲（吉），
-                <span className="text-rose-800 font-bold">紅色K線</span> 代表運勢下跌（兇）。
-                <span className="text-amber-800 font-bold">★ 巔峰</span> 標記爲全盤最高運勢點。
+              <p className="text-sm sm:text-base text-slate-800 mb-2 no-print font-medium">
+                <span className="text-emerald-900 font-bold">綠色K線</span> 代表運勢上漲（吉），
+                <span className="text-rose-900 font-bold">紅色K線</span> 代表運勢下跌（兇）。
+                <span className="text-amber-900 font-bold">★ 巔峰</span> 標記爲全盤最高運勢點。
               </p>
               <LifeKLineChart data={result.chartData} />
             </section>
@@ -615,41 +628,41 @@ const App: React.FC = () => {
             <div className="hidden print:block mt-8 break-before-page">
               <div className="p-4 border-b border-slate-200 bg-slate-50 flex items-center gap-2 mb-4">
                 <div className="w-1.5 h-5 bg-indigo-600 rounded-full" />
-                <h3 className="text-xl font-bold text-slate-900 font-serif-sc">888 流年詳批全表 (1-100歲)</h3>
+                <h3 className="text-2xl font-bold text-slate-950 font-serif-sc">888 流年詳批全表 (1-100歲)</h3>
               </div>
-              <table className="w-full text-left border-collapse text-xs">
+              <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-100 text-slate-900 font-bold uppercase tracking-wider">
-                    <th className="p-2 border border-slate-300 text-center w-14">年齡</th>
-                    <th className="p-2 border border-slate-300 text-center w-24">流年</th>
-                    <th className="p-2 border border-slate-300 text-center w-24">大運</th>
-                    <th className="p-2 border border-slate-300 text-center w-16">評分</th>
-                    <th className="p-2 border border-slate-300">運勢批斷與建議</th>
+                    <th className="p-2.5 border border-slate-300 text-center w-16">年齡</th>
+                    <th className="p-2.5 border border-slate-300 text-center w-28">流年</th>
+                    <th className="p-2.5 border border-slate-300 text-center w-28">大運</th>
+                    <th className="p-2.5 border border-slate-300 text-center w-20">評分</th>
+                    <th className="p-2.5 border border-slate-300">運勢批斷與建議</th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.chartData.map((item) => (
                     <tr key={item.age} className="border-b border-slate-200 break-inside-avoid">
-                      <td className="p-2 border border-slate-200 text-center font-mono font-bold">{item.age}歲</td>
-                      <td className="p-2 border border-slate-200 text-center font-bold">
+                      <td className="p-2.5 border border-slate-200 text-center font-mono font-bold text-base text-slate-950">{item.age}歲</td>
+                      <td className="p-2.5 border border-slate-200 text-center font-bold text-base text-slate-950">
                         {item.year} {item.ganZhi}
                       </td>
-                      <td className="p-2 border border-slate-200 text-center">{item.daYun || '-'}</td>
+                      <td className="p-2.5 border border-slate-200 text-center text-slate-900 font-medium">{item.daYun || '-'}</td>
                       <td
-                        className={`p-2 border border-slate-200 text-center font-bold font-mono ${
+                        className={`p-2.5 border border-slate-200 text-center font-black font-mono text-base ${
                           item.close >= item.open ? 'text-emerald-800' : 'text-rose-800'
                         }`}
                       >
                         {item.score}
                       </td>
-                      <td className="p-2 border border-slate-200 text-slate-800 text-justify text-xs leading-relaxed">
+                      <td className="p-2.5 border border-slate-200 text-slate-950 text-justify text-sm leading-relaxed">
                         {item.reason}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <div className="mt-8 pt-4 border-t border-slate-200 flex justify-between items-center text-xs text-slate-600">
+              <div className="mt-8 pt-4 border-t border-slate-200 flex justify-between items-center text-sm text-slate-700 font-medium">
                 <span>用戶：{userName || '未命名'}</span>
                 <span>生成時間：{new Date().toLocaleString()}</span>
               </div>
@@ -660,7 +673,7 @@ const App: React.FC = () => {
 
       {/* 底部 Footer */}
       <footer className="w-full bg-slate-950 text-slate-300 py-8 mt-auto no-print border-t border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 text-center text-sm">
+        <div className="max-w-7xl mx-auto px-4 text-center text-base">
           <p className="font-medium text-slate-300">
             &copy; {new Date().getFullYear()} 888人生K線 | 僅供娛樂與文化研究，請勿迷信
           </p>

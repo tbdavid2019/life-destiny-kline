@@ -22,19 +22,19 @@ const CustomTooltip = ({ active, payload }: any) => {
     const data = payload[0].payload as KLinePoint;
     const isUp = data.close >= data.open;
     return (
-      <div className="bg-white/98 backdrop-blur-md p-5 rounded-2xl shadow-2xl border border-slate-300 z-50 w-[320px] md:w-[420px]">
+      <div className="bg-white/98 backdrop-blur-md p-6 rounded-2xl shadow-2xl border border-slate-300 z-50 w-[340px] md:w-[480px]">
         {/* Header */}
-        <div className="flex justify-between items-start mb-3 border-b border-slate-200 pb-2.5">
+        <div className="flex justify-between items-start mb-4 border-b border-slate-200 pb-3">
           <div>
-            <p className="text-xl font-bold text-slate-950 font-serif-sc">
-              {data.year} {data.ganZhi} 年 <span className="text-sm text-slate-700 font-semibold font-sans">({data.age} 歲)</span>
+            <p className="text-2xl font-bold text-slate-950 font-serif-sc">
+              {data.year} {data.ganZhi} 年 <span className="text-base text-slate-700 font-semibold font-sans">({data.age} 歲)</span>
             </p>
-            <p className="text-sm text-indigo-950 font-bold mt-1">
+            <p className="text-base text-indigo-950 font-bold mt-1.5">
               大運：{data.daYun || '大運交界'}
             </p>
           </div>
           <div
-            className={`text-xs font-extrabold px-2.5 py-1 rounded-md border flex items-center gap-1 ${
+            className={`text-sm font-extrabold px-3 py-1 rounded-md border flex items-center gap-1 ${
               isUp
                 ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
                 : 'bg-rose-100 text-rose-950 border-rose-300'
@@ -45,27 +45,27 @@ const CustomTooltip = ({ active, payload }: any) => {
         </div>
 
         {/* Data Grid */}
-        <div className="grid grid-cols-4 gap-2 text-xs mb-3 bg-slate-100 p-2.5 rounded-lg border border-slate-200">
-          <div className="text-center">
-            <span className="block text-slate-600 font-bold scale-90">開盤</span>
-            <span className="font-mono text-slate-950 font-extrabold">{data.open}</span>
+        <div className="grid grid-cols-4 gap-2 text-center mb-4 bg-slate-100 p-3 rounded-xl border border-slate-200">
+          <div>
+            <span className="block text-sm text-slate-700 font-bold mb-0.5">開盤</span>
+            <span className="font-mono text-base sm:text-lg text-slate-950 font-extrabold">{data.open}</span>
           </div>
-          <div className="text-center">
-            <span className="block text-slate-600 font-bold scale-90">收盤</span>
-            <span className="font-mono text-slate-950 font-extrabold">{data.close}</span>
+          <div>
+            <span className="block text-sm text-slate-700 font-bold mb-0.5">收盤</span>
+            <span className="font-mono text-base sm:text-lg text-slate-950 font-extrabold">{data.close}</span>
           </div>
-          <div className="text-center">
-            <span className="block text-slate-600 font-bold scale-90">最高</span>
-            <span className="font-mono text-slate-950 font-extrabold">{data.high}</span>
+          <div>
+            <span className="block text-sm text-slate-700 font-bold mb-0.5">最高</span>
+            <span className="font-mono text-base sm:text-lg text-slate-950 font-extrabold">{data.high}</span>
           </div>
-          <div className="text-center">
-            <span className="block text-slate-600 font-bold scale-90">最低</span>
-            <span className="font-mono text-slate-950 font-extrabold">{data.low}</span>
+          <div>
+            <span className="block text-sm text-slate-700 font-bold mb-0.5">最低</span>
+            <span className="font-mono text-base sm:text-lg text-slate-950 font-extrabold">{data.low}</span>
           </div>
         </div>
 
         {/* Detailed Reason */}
-        <div className="text-xs md:text-sm text-slate-800 leading-relaxed text-justify max-h-[220px] overflow-y-auto custom-scrollbar">
+        <div className="text-sm sm:text-base text-slate-900 leading-relaxed sm:leading-loose text-justify max-h-[260px] overflow-y-auto custom-scrollbar">
           {data.reason}
         </div>
       </div>
@@ -129,7 +129,7 @@ const PeakLabel = (props: any) => {
       {/* Red Star Icon */}
       <path
         d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-        transform={`translate(${x + width / 2 - 7}, ${y - 26}) scale(0.6)`}
+        transform={`translate(${x + width / 2 - 8}, ${y - 28}) scale(0.7)`}
         fill="#b45309"
         stroke="#78350f"
         strokeWidth="1"
@@ -137,9 +137,9 @@ const PeakLabel = (props: any) => {
       {/* Score Text */}
       <text
         x={x + width / 2}
-        y={y - 30}
+        y={y - 32}
         fill="#78350f"
-        fontSize={11}
+        fontSize={13}
         fontWeight="bold"
         textAnchor="middle"
       >
@@ -151,7 +151,7 @@ const PeakLabel = (props: any) => {
 
 const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
   if (!data || data.length === 0) {
-    return <div className="h-[500px] flex items-center justify-center text-slate-600 font-bold">無數據</div>;
+    return <div className="h-[500px] flex items-center justify-center text-slate-700 font-bold text-lg">無數據</div>;
   }
 
   const transformedData = data.map((d) => ({
@@ -170,52 +170,52 @@ const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
   const maxHigh = Math.max(...data.map((d) => d.high));
 
   return (
-    <div className="w-full h-[600px] bg-white p-3 md:p-6 rounded-2xl border border-slate-200 shadow-sm relative">
-      <div className="mb-6 flex flex-wrap justify-between items-center gap-2 px-2">
-        <h3 className="text-xl font-bold text-slate-900 font-serif-sc">人生流年大運K線圖</h3>
-        <div className="flex gap-3 text-xs font-bold">
-          <span className="flex items-center text-emerald-950 bg-emerald-100 border border-emerald-300 px-2.5 py-1 rounded-md">
-            <span className="w-2.5 h-2.5 bg-emerald-700 mr-1.5 rounded-full" aria-hidden="true" />
+    <div className="w-full h-[620px] bg-white p-4 md:p-7 rounded-2xl border border-slate-200 shadow-sm relative">
+      <div className="mb-6 flex flex-wrap justify-between items-center gap-3 px-2">
+        <h3 className="text-2xl font-bold text-slate-950 font-serif-sc">人生流年大運K線圖</h3>
+        <div className="flex flex-wrap gap-3 text-sm font-bold">
+          <span className="flex items-center text-emerald-950 bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-lg">
+            <span className="w-3 h-3 bg-emerald-700 mr-2 rounded-full" aria-hidden="true" />
             吉運 (運勢上漲)
           </span>
-          <span className="flex items-center text-rose-950 bg-rose-100 border border-rose-300 px-2.5 py-1 rounded-md">
-            <span className="w-2.5 h-2.5 bg-rose-700 mr-1.5 rounded-full" aria-hidden="true" />
+          <span className="flex items-center text-rose-950 bg-rose-100 border border-rose-300 px-3 py-1.5 rounded-lg">
+            <span className="w-3 h-3 bg-rose-700 mr-2 rounded-full" aria-hidden="true" />
             兇運 (運勢回調)
           </span>
         </div>
       </div>
 
-      <ResponsiveContainer width="100%" height="90%">
-        <ComposedChart data={transformedData} margin={{ top: 35, right: 10, left: 0, bottom: 20 }}>
+      <ResponsiveContainer width="100%" height="88%">
+        <ComposedChart data={transformedData} margin={{ top: 38, right: 15, left: 5, bottom: 25 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
 
           <XAxis
             dataKey="age"
-            tick={{ fontSize: 11, fill: '#334155' }}
+            tick={{ fontSize: 13, fill: '#0f172a', fontWeight: 600 }}
             interval={9}
             axisLine={{ stroke: '#94a3b8' }}
             tickLine={false}
             label={{
               value: '年齡 (歲)',
               position: 'insideBottomRight',
-              offset: -5,
-              fontSize: 11,
-              fill: '#1e293b',
+              offset: -8,
+              fontSize: 13,
+              fill: '#0f172a',
               fontWeight: 700,
             }}
           />
 
           <YAxis
             domain={[0, 'auto']}
-            tick={{ fontSize: 11, fill: '#334155' }}
+            tick={{ fontSize: 13, fill: '#0f172a', fontWeight: 600 }}
             axisLine={false}
             tickLine={false}
             label={{
               value: '運勢評分',
               angle: -90,
               position: 'insideLeft',
-              fontSize: 11,
-              fill: '#1e293b',
+              fontSize: 13,
+              fill: '#0f172a',
               fontWeight: 700,
             }}
           />
@@ -237,8 +237,8 @@ const LifeKLineChart: React.FC<LifeKLineChartProps> = ({ data = [] }) => {
               <Label
                 value={point.daYun}
                 position="top"
-                fill="#312e81"
-                fontSize={11}
+                fill="#1e1b4b"
+                fontSize={13}
                 fontWeight="bold"
                 className="hidden md:block"
               />

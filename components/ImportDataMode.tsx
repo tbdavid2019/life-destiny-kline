@@ -113,35 +113,35 @@ const ImportDataMode: React.FC<ImportDataModeProps> = ({ onDataImport }) => {
     <div className="w-full max-w-2xl bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200">
       <div className="text-center mb-6">
         <h2 className="text-2xl sm:text-3xl font-bold font-serif-sc text-slate-900 mb-2">手動導入 JSON</h2>
-        <p className="text-slate-600 text-sm font-medium">粘貼 AI 生成的分析數據以繪製圖表與全量流年詳批</p>
+        <p className="text-slate-700 text-sm sm:text-base font-medium">粘貼 AI 生成的分析數據以繪製圖表與全量流年詳批</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-5">
         <div className="relative">
           <textarea
             value={jsonInput}
             onChange={(e) => setJsonInput(e.target.value)}
             placeholder="粘貼 JSON 數據..."
-            className={`w-full h-64 p-4 border rounded-xl font-mono text-xs sm:text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none transition-all ${
+            className={`w-full h-64 p-4 border rounded-xl font-mono text-sm sm:text-base text-slate-900 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none transition-all leading-relaxed ${
               error ? 'border-rose-300 bg-rose-50/50' : 'border-slate-300 bg-slate-50'
             }`}
           />
-          <div className="absolute top-3 right-3 pointer-events-none">
+          <div className="absolute top-3.5 right-3.5 pointer-events-none">
             <Sparkles className="w-5 h-5 text-indigo-400" />
           </div>
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 p-3 bg-rose-50 text-rose-950 rounded-lg border border-rose-200 text-sm animate-shake">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-700" />
-            <span className="font-bold">{error}</span>
+          <div className="flex items-center gap-2.5 p-3.5 bg-rose-50 text-rose-950 rounded-xl border border-rose-200 text-sm sm:text-base animate-shake font-bold">
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-700" />
+            <span>{error}</span>
           </div>
         )}
 
         <button
           type="button"
           onClick={handleImport}
-          className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold transition-all shadow-md flex items-center justify-center gap-2 group focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+          className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-base sm:text-lg transition-all shadow-md flex items-center justify-center gap-2.5 group focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
         >
           <CheckCircle className="w-5 h-5 group-hover:scale-110 transition-transform" />
           <span>立即導入並生成圖表</span>

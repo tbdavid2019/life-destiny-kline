@@ -1,6 +1,7 @@
 import { LifeDestinyResult } from '../types';
 
 export interface SharedPayload {
+  v?: number;
   userName?: string;
   result: LifeDestinyResult;
 }
