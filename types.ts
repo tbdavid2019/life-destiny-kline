@@ -1,7 +1,23 @@
-
 export enum Gender {
   MALE = 'Male',
   FEMALE = 'Female',
+}
+
+export type AIProvider = 
+  | 'gemini'
+  | 'openai'
+  | 'claude'
+  | 'grok'
+  | 'groq'
+  | 'openrouter'
+  | 'bedrock'
+  | 'custom';
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  description?: string;
+  contextLength?: number;
 }
 
 export interface UserInput {
@@ -15,10 +31,17 @@ export interface UserInput {
   startAge: string;    // 起運年齡 (虛歲) - Changed to string to handle input field state easily, parse later
   firstDaYun: string;  // 第一步大運干支
   
-  // New API Configuration Fields
+  // API Configuration Fields (BYOK)
+  provider?: AIProvider;
   modelName: string;   // 使用的模型名稱
   apiBaseUrl: string;
   apiKey: string;
+
+  // AWS Bedrock specific credentials
+  awsAccessKeyId?: string;
+  awsSecretAccessKey?: string;
+  awsRegion?: string;
+  awsSessionToken?: string;
 }
 
 export interface KLinePoint {
