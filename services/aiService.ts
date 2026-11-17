@@ -2,6 +2,7 @@ import { UserInput, LifeDestinyResult, Gender } from "../types";
 import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 import { signAwsRequest } from "./awsSigV4";
 import { getDefaultBaseUrl } from "./modelService";
+import { callFreeLlmProxy } from "./freeLlmService";
 import {
   calculateBazi,
   BaziCalculationResult,
@@ -367,9 +368,12 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
 
   const cleanApiKey = apiKey ? apiKey.trim() : "";
   const targetModel = modelName && modelName.trim() ? modelName.trim() : "gemini-2.5-flash";
+  const isFreeMode = provider === 'free';
 
-  // Bedrock 使用 IAM Key，其他 Provider 驗證 API Key
-  if (provider === 'bedrock' && (!apiBaseUrl || !apiBaseUrl.trim())) {
+  // 免費模式透過後端安全代理執行；Bedrock 使用 IAM Key；其餘 BYOK Provider 驗證 API Key
+  if (isFreeMode) {
+    // No client-side API key required
+  } else if (provider === 'bedrock' && (!apiBaseUrl || !apiBaseUrl.trim())) {
     if (!awsAccessKeyId?.trim() || !awsSecretAccessKey?.trim()) {
       throw new Error("請填寫有效的 AWS Access Key ID 與 Secret Access Key");
     }
@@ -382,9 +386,11 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
     }
   }
 
-  const cleanBaseUrl = apiBaseUrl && apiBaseUrl.trim() 
-    ? apiBaseUrl.trim().replace(/\/+$/, "") 
-    : getDefaultBaseUrl(provider);
+  const cleanBaseUrl = isFreeMode
+    ? ""
+    : apiBaseUrl && apiBaseUrl.trim()
+      ? apiBaseUrl.trim().replace(/\/+$/, "")
+      : getDefaultBaseUrl(provider);
 
   // 驗證傳輸協議安全：遠端端點必須使用 HTTPS（本地與區域網路測試允許 http://localhost / http://127.0.0.1 / 私有 IP）
   if (cleanBaseUrl) {
@@ -502,7 +508,12 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
 
   try {
     // 依據不同 Provider 調用對應的 API
-    if (provider === 'claude') {
+    if (isFreeMode) {
+      content = await callFreeLlmProxy({
+        systemInstruction,
+        userPrompt,
+      });
+    } else if (provider === 'claude') {
       content = await callAnthropicApi({
         baseUrl: cleanBaseUrl,
         apiKey: cleanApiKey,

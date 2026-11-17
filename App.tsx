@@ -345,15 +345,17 @@ const App: React.FC = () => {
     setLastUserInput(cleanInputData);
     safeStorage.setItem('lifekline_last_user_input', JSON.stringify(cleanInputData));
 
-    // Save config for convenience
+    // Save config for convenience (do not overwrite saved BYOK credentials when using free mode)
     if (data.provider) safeStorage.setItem('lifekline_provider', data.provider);
-    safeStorage.setItem('lifekline_api_key', data.apiKey || '');
-    safeStorage.setItem('lifekline_api_url', data.apiBaseUrl || '');
-    safeStorage.setItem('lifekline_model', data.modelName || '');
-    if (data.awsAccessKeyId) safeStorage.setItem('lifekline_aws_ak', data.awsAccessKeyId);
-    if (data.awsSecretAccessKey) safeStorage.setItem('lifekline_aws_sk', data.awsSecretAccessKey);
-    if (data.awsRegion) safeStorage.setItem('lifekline_aws_region', data.awsRegion);
-    if (data.awsSessionToken) safeStorage.setItem('lifekline_aws_st', data.awsSessionToken);
+    if (data.provider !== 'free') {
+      safeStorage.setItem('lifekline_api_key', data.apiKey || '');
+      safeStorage.setItem('lifekline_api_url', data.apiBaseUrl || '');
+      safeStorage.setItem('lifekline_model', data.modelName || '');
+      if (data.awsAccessKeyId) safeStorage.setItem('lifekline_aws_ak', data.awsAccessKeyId);
+      if (data.awsSecretAccessKey) safeStorage.setItem('lifekline_aws_sk', data.awsSecretAccessKey);
+      if (data.awsRegion) safeStorage.setItem('lifekline_aws_region', data.awsRegion);
+      if (data.awsSessionToken) safeStorage.setItem('lifekline_aws_st', data.awsSessionToken);
+    }
 
     try {
       const analysisResult = await generateLifeAnalysis(cleanInputData);
@@ -392,7 +394,7 @@ const App: React.FC = () => {
       customLongitude: lastUserInput.customLongitude,
       customLatitude: lastUserInput.customLatitude,
       apiKey: initialConfig.apiKey || lastUserInput.apiKey || '',
-      provider: initialConfig.provider || lastUserInput.provider,
+      provider: lastUserInput.provider || initialConfig.provider,
       modelName: initialConfig.modelName || lastUserInput.modelName,
       apiBaseUrl: initialConfig.apiBaseUrl || lastUserInput.apiBaseUrl,
       awsAccessKeyId: initialConfig.awsAccessKeyId || lastUserInput.awsAccessKeyId,

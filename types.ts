@@ -9,6 +9,7 @@ export enum Gender {
 }
 
 export type AIProvider = 
+  | 'free'
   | 'gemini'
   | 'openai'
   | 'claude'

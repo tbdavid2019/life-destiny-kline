@@ -24,6 +24,7 @@ import {
 import { calculateBazi } from '../services/baziUtils';
 import { CITY_GROUPS } from '../services/solarTime';
 import { PROVIDERS, fetchModelList, getDefaultBaseUrl } from '../services/modelService';
+import { fetchFreeLlmStatus, FreeLlmStatus, isFreeLlmBuildEnabled } from '../services/freeLlmService';
 
 interface BaziFormProps {
   onSubmit: (data: UserInput) => void;
@@ -50,6 +51,13 @@ const sanitizeUserName = (rawName?: string): string => {
 
 const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData }) => {
   const initialProvider: AIProvider = (initialData?.provider as AIProvider) || 'gemini';
+  const [lastByokProvider, setLastByokProvider] = useState<AIProvider>(
+    initialProvider !== 'free' ? initialProvider : 'gemini'
+  );
+  const [freeLlmStatus, setFreeLlmStatus] = useState<FreeLlmStatus & { checked: boolean }>({
+    checked: !isFreeLlmBuildEnabled(),
+    enabled: false,
+  });
 
   const [formData, setFormData] = useState<UserInput>({
     name: sanitizeUserName(initialData?.name),
@@ -115,7 +123,48 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     customLng?: string;
   }>({});
 
-  const activeProviderMeta = PROVIDERS.find((p) => p.id === formData.provider) || PROVIDERS[0];
+  const activeProviderMeta =
+    PROVIDERS.find((p) => p.id === (formData.provider === 'free' ? lastByokProvider : formData.provider)) ||
+    PROVIDERS[0];
+
+  // Probe server-side free LLM proxy status on mount (parameterized & remotely toggleable)
+  useEffect(() => {
+    let active = true;
+    if (!isFreeLlmBuildEnabled()) {
+      return;
+    }
+
+    fetchFreeLlmStatus().then((status) => {
+      if (!active) return;
+      setFreeLlmStatus({ ...status, checked: true });
+
+      setFormData((prev) => {
+        if (status.enabled) {
+          const hasSavedByokCredentials = Boolean(
+            prev.apiKey?.trim() || prev.awsAccessKeyId?.trim() || prev.awsSecretAccessKey?.trim()
+          );
+          if (!hasSavedByokCredentials && (!initialData?.provider || initialData.provider === 'free')) {
+            return { ...prev, provider: 'free' };
+          }
+          return prev;
+        }
+
+        if (prev.provider === 'free') {
+          const fallback = lastByokProvider !== 'free' ? lastByokProvider : 'gemini';
+          return {
+            ...prev,
+            provider: fallback,
+            apiBaseUrl: prev.apiBaseUrl || getDefaultBaseUrl(fallback),
+          };
+        }
+        return prev;
+      });
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Auto-calculate Bazi when date/time/gender/place/customLng changes
   useEffect(() => {
@@ -161,16 +210,22 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
   // Sync initialData changes if parent updates
   useEffect(() => {
     if (initialData) {
-      setFormData((prev) => ({
-        ...prev,
-        ...initialData,
-        name: sanitizeUserName(initialData.name ?? prev.name),
-        provider: (initialData.provider as AIProvider) || prev.provider,
-        apiBaseUrl:
-          initialData.apiBaseUrl ||
-          prev.apiBaseUrl ||
-          getDefaultBaseUrl(initialData.provider || prev.provider || 'gemini'),
-      }));
+      setFormData((prev) => {
+        const nextProvider = (initialData.provider as AIProvider) || prev.provider;
+        if (nextProvider && nextProvider !== 'free') {
+          setLastByokProvider(nextProvider);
+        }
+        return {
+          ...prev,
+          ...initialData,
+          name: sanitizeUserName(initialData.name ?? prev.name),
+          provider: nextProvider,
+          apiBaseUrl:
+            initialData.apiBaseUrl ||
+            prev.apiBaseUrl ||
+            getDefaultBaseUrl(nextProvider || 'gemini'),
+        };
+      });
 
       if (initialData.birthDate) {
         setBirthDate(initialData.birthDate);
@@ -191,6 +246,13 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
 
   // Handle provider switch
   const handleProviderSelect = (providerId: AIProvider) => {
+    if (providerId === 'free') {
+      setFormData((prev) => ({ ...prev, provider: 'free' }));
+      setFormErrors((prev) => ({ ...prev, apiKey: undefined, modelName: undefined, apiBaseUrl: undefined }));
+      return;
+    }
+
+    setLastByokProvider(providerId);
     const meta = PROVIDERS.find((p) => p.id === providerId);
     setFormData((prev) => ({
       ...prev,
@@ -264,23 +326,26 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
       customLng?: string;
     } = {};
 
+    const isFreeMode = formData.provider === 'free' && freeLlmStatus.enabled;
     const isAws = formData.provider === 'bedrock' && (!formData.apiBaseUrl || !formData.apiBaseUrl.trim());
 
-    if (isAws) {
-      if (!formData.awsAccessKeyId?.trim()) {
-        errors.awsAccessKeyId = '請輸入 AWS Access Key ID';
+    if (!isFreeMode) {
+      if (isAws) {
+        if (!formData.awsAccessKeyId?.trim()) {
+          errors.awsAccessKeyId = '請輸入 AWS Access Key ID';
+        }
+        if (!formData.awsSecretAccessKey?.trim()) {
+          errors.awsSecretAccessKey = '請輸入 AWS Secret Access Key';
+        }
+      } else {
+        if (!formData.apiKey.trim()) {
+          errors.apiKey = '請輸入有效的 API Key';
+        }
       }
-      if (!formData.awsSecretAccessKey?.trim()) {
-        errors.awsSecretAccessKey = '請輸入 AWS Secret Access Key';
-      }
-    } else {
-      if (!formData.apiKey.trim()) {
-        errors.apiKey = '請輸入有效的 API Key';
-      }
-    }
 
-    if (!formData.modelName.trim()) {
-      errors.modelName = '請選擇或輸入模型名稱 (可點擊「獲取模型列表」自動載入)';
+      if (!formData.modelName.trim()) {
+        errors.modelName = '請選擇或輸入模型名稱 (可點擊「獲取模型列表」自動載入)';
+      }
     }
 
     if (!birthDate) {
@@ -311,7 +376,8 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
     onSubmit(submissionData);
   };
 
-  const isAwsProvider = formData.provider === 'bedrock';
+  const isFreeMode = formData.provider === 'free' && freeLlmStatus.enabled;
+  const isAwsProvider = !isFreeMode && formData.provider === 'bedrock';
 
   return (
     <div className="w-full max-w-3xl bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-200">
@@ -320,7 +386,9 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           888 人生推演
         </h2>
         <p className="text-slate-700 text-base sm:text-lg font-medium leading-relaxed">
-          輸入出生時間與自備 AI 引擎金鑰 (BYOK)，自動排盤推演百年流年 K 線與命理詳批
+          {freeLlmStatus.enabled
+            ? '輸入出生時間即可免費推演百年流年 K 線，亦可隨時切換自備 AI 金鑰 (BYOK)'
+            : '輸入出生時間與自備 AI 引擎金鑰 (BYOK)，自動排盤推演百年流年 K 線與命理詳批'}
         </p>
       </div>
 
@@ -652,19 +720,108 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
         )}
 
         {/* ============================================================ */}
-        {/* BYOK 模型與 Provider 配置區塊 */}
+        {/* AI 引擎與模型配置區塊 (支援參數化免費引擎與 BYOK 切換) */}
         {/* ============================================================ */}
         <div className="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-300 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
             <div className="flex items-center gap-2 text-slate-950 text-base sm:text-lg font-bold">
               <Cpu className="w-5 h-5 text-indigo-700 flex-shrink-0" />
-              <span>AI 引擎與自備金鑰 (BYOK)</span>
+              <span>AI 引擎與模型設定</span>
             </div>
-            <span className="text-sm px-3 py-1 rounded-full bg-indigo-100 text-indigo-950 font-bold border border-indigo-200">
-              連線取得即時模型
-            </span>
+            {isFreeMode ? (
+              <span className="text-sm px-3 py-1 rounded-full bg-emerald-100 text-emerald-950 font-bold border border-emerald-300">
+                免費免金鑰直連
+              </span>
+            ) : (
+              <span className="text-sm px-3 py-1 rounded-full bg-indigo-100 text-indigo-950 font-bold border border-indigo-200">
+                自備金鑰 (BYOK)
+              </span>
+            )}
           </div>
 
+          {freeLlmStatus.enabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" role="group" aria-label="AI 使用模式切換">
+              <button
+                type="button"
+                onClick={() => handleProviderSelect('free')}
+                aria-pressed={isFreeMode}
+                className={`p-3.5 rounded-2xl text-left transition-all border flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:outline-none ${
+                  isFreeMode
+                    ? 'border-emerald-700 bg-white text-emerald-950 font-bold shadow-sm ring-2 ring-emerald-600/20'
+                    : 'border-slate-300 bg-white/90 hover:bg-white text-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="space-y-0.5">
+                  <div className="text-sm sm:text-base font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <span>免費預設 AI 引擎</span>
+                  </div>
+                  <div className="text-xs sm:text-sm text-slate-700 font-medium">
+                    免填 API Key，立即可用
+                  </div>
+                </div>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-md font-bold flex-shrink-0 ${
+                    isFreeMode
+                      ? 'bg-emerald-100 text-emerald-950'
+                      : 'bg-slate-200 text-slate-800'
+                  }`}
+                >
+                  推薦
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleProviderSelect(lastByokProvider !== 'free' ? lastByokProvider : 'gemini')}
+                aria-pressed={!isFreeMode}
+                className={`p-3.5 rounded-2xl text-left transition-all border flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
+                  !isFreeMode
+                    ? 'border-indigo-600 bg-white text-indigo-950 font-bold shadow-sm ring-2 ring-indigo-500/20'
+                    : 'border-slate-300 bg-white/90 hover:bg-white text-slate-800 hover:border-slate-400'
+                }`}
+              >
+                <div className="space-y-0.5">
+                  <div className="text-sm sm:text-base font-bold flex items-center gap-1.5">
+                    <Settings className="w-4 h-4 text-indigo-700 flex-shrink-0" />
+                    <span>自備金鑰 (BYOK)</span>
+                  </div>
+                  <div className="text-xs sm:text-sm text-slate-700 font-medium">
+                    自選 Gemini / ChatGPT / Claude 等
+                  </div>
+                </div>
+                <span
+                  className={`text-xs px-2.5 py-1 rounded-md font-bold flex-shrink-0 ${
+                    !isFreeMode
+                      ? 'bg-indigo-100 text-indigo-950'
+                      : 'bg-slate-200 text-slate-800'
+                  }`}
+                >
+                  進階
+                </span>
+              </button>
+            </div>
+          )}
+
+          {isFreeMode ? (
+            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 sm:p-5 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-emerald-950 font-bold text-sm sm:text-base">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-700 flex-shrink-0" />
+                  <span>已啟用站方免費 AI 引擎，無需設定 API Key</span>
+                </div>
+                {freeLlmStatus.model && (
+                  <span className="text-xs sm:text-sm font-mono font-bold px-2.5 py-1 rounded-lg bg-white text-emerald-950 border border-emerald-300">
+                    模型：{freeLlmStatus.model}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-slate-800 leading-relaxed font-medium">
+                所有推演請求由伺服器端安全代理轉發，金鑰不會外洩至瀏覽器。填妥上方出生資料後即可直接點擊生成報告。
+              </p>
+            </div>
+          ) : (
+            <>
           {/* Provider 選擇按鈕矩陣 (絕無省略號，自然換行，大字體) */}
           <div>
             <label className="block text-sm sm:text-base font-bold text-slate-900 mb-2.5">
@@ -1012,6 +1169,8 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
               </div>
             )}
           </div>
+            </>
+          )}
         </div>
 
         {/* 提交按鈕 */}
