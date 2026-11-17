@@ -1,3 +1,5 @@
+import { readSseStream } from './sseUtils';
+
 export interface FreeLlmStatus {
   enabled: boolean;
   model?: string;
@@ -116,35 +118,10 @@ export async function callFreeLlmProxy(params: {
     return payload.content || '';
   }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
-  let currentEvent = 'message';
   let fullContent = '';
   let finishReason: string | undefined;
 
-  const processLine = (rawLine: string): boolean => {
-    const line = rawLine.trim();
-    if (!line) {
-      currentEvent = 'message';
-      return false;
-    }
-    if (line.startsWith(':')) {
-      return false;
-    }
-    if (line.startsWith('event:')) {
-      currentEvent = line.slice(6).trim();
-      return false;
-    }
-    if (!line.startsWith('data:')) {
-      return false;
-    }
-
-    const dataStr = line.slice(5).trim();
-    if (dataStr === '[DONE]') {
-      return true;
-    }
-
+  await readSseStream(response, (eventName, dataStr) => {
     let parsed: {
       delta?: string;
       content?: string;
@@ -154,10 +131,10 @@ export async function callFreeLlmProxy(params: {
     try {
       parsed = JSON.parse(dataStr);
     } catch {
-      return false;
+      return;
     }
 
-    if (currentEvent === 'error' || parsed.error) {
+    if (eventName === 'error' || parsed.error) {
       throw new Error(parsed.error || '免費 AI 引擎回傳異常，請稍後重試或切換至自備金鑰 (BYOK)。');
     }
 
@@ -170,32 +147,7 @@ export async function callFreeLlmProxy(params: {
     if (parsed.finishReason) {
       finishReason = parsed.finishReason;
     }
-
-    return false;
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split(/\r?\n/);
-    buffer = lines.pop() ?? '';
-
-    for (const rawLine of lines) {
-      const finished = processLine(rawLine);
-      if (finished) {
-        if (finishReason === 'length') {
-          console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');
-        }
-        return fullContent;
-      }
-    }
-  }
-
-  if (buffer.trim()) {
-    processLine(buffer);
-  }
+  });
 
   if (finishReason === 'length') {
     console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');

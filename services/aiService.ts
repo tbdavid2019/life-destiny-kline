@@ -3,6 +3,7 @@ import { BAZI_SYSTEM_INSTRUCTION } from "../constants";
 import { signAwsRequest } from "./awsSigV4";
 import { getDefaultBaseUrl } from "./modelService";
 import { callFreeLlmProxy } from "./freeLlmService";
+import { readSseStream } from "./sseUtils";
 import {
   calculateBazi,
   BaziCalculationResult,
@@ -622,7 +623,7 @@ export const generateLifeAnalysis = async (input: UserInput): Promise<LifeDestin
 };
 
 /**
- * 調用 Anthropic Claude Messages API
+ * 調用 Anthropic Claude Messages API (啟用 SSE 串流防超時，並兼容非串流 JSON 回應)
  */
 async function callAnthropicApi(params: {
   baseUrl: string;
@@ -650,6 +651,7 @@ async function callAnthropicApi(params: {
       messages: [
         { role: 'user', content: userPrompt }
       ],
+      stream: true,
       temperature: 0.7,
     }),
   });
@@ -659,9 +661,37 @@ async function callAnthropicApi(params: {
     throw new Error(`Anthropic Claude 請求失敗: ${response.status} - ${errText}`);
   }
 
-  const jsonResult = await response.json();
-  const textContent = jsonResult.content?.find((c: any) => c.type === 'text')?.text || jsonResult.content?.[0]?.text;
-  return textContent || "";
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !response.body) {
+    const jsonResult = await response.json();
+    const textContent = jsonResult.content?.find((c: any) => c.type === 'text')?.text || jsonResult.content?.[0]?.text;
+    return textContent || "";
+  }
+
+  let fullContent = '';
+  await readSseStream(response, (eventName, dataStr) => {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(dataStr);
+    } catch {
+      return;
+    }
+
+    if (eventName === 'error' || parsed.type === 'error' || parsed.error) {
+      throw new Error(`Anthropic Claude 串流錯誤: ${parsed.error?.message || JSON.stringify(parsed)}`);
+    }
+    if (parsed.type === 'content_block_delta' && parsed.delta?.type === 'text_delta' && typeof parsed.delta.text === 'string') {
+      fullContent += parsed.delta.text;
+    }
+    if (parsed.type === 'message_delta' && parsed.delta?.stop_reason === 'max_tokens') {
+      console.warn('[claude] 模型輸出觸及長度上限 (stop_reason: max_tokens)，啟動自動修復與流年補齊機制。');
+    }
+    if (parsed.type === 'message_stop') {
+      return true;
+    }
+  });
+
+  return fullContent;
 }
 
 /**
@@ -725,7 +755,7 @@ async function callBedrockConverseApi(params: {
 }
 
 /**
- * 調用 OpenAI-Compatible Chat Completions 端點
+ * 調用 OpenAI-Compatible Chat Completions 端點 (啟用 SSE 串流防閘道/代理超時，並兼容非串流 JSON 回應)
  */
 async function callOpenAICompatibleApi(params: {
   provider: string;
@@ -755,6 +785,7 @@ async function callOpenAICompatibleApi(params: {
 
   const requestBodyPayload: Record<string, any> = {
     model,
+    stream: true,
     messages: [
       { role: "system", content: systemInstruction },
       { role: "user", content: userPrompt },
@@ -782,11 +813,45 @@ async function callOpenAICompatibleApi(params: {
     throw new Error(`API 請求失敗 (${provider}): ${response.status} - ${errText}`);
   }
 
-  const jsonResult = await response.json();
-  const choice = jsonResult.choices?.[0];
-  if (choice?.finish_reason === 'length') {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !response.body) {
+    const jsonResult = await response.json();
+    const choice = jsonResult.choices?.[0];
+    if (choice?.finish_reason === 'length') {
+      console.warn(`[${provider}] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。`);
+    }
+    const content = choice?.message?.content;
+    return content || "";
+  }
+
+  let fullContent = '';
+  let finishReason: string | undefined;
+
+  await readSseStream(response, (eventName, dataStr) => {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(dataStr);
+    } catch {
+      return;
+    }
+
+    if (eventName === 'error' || parsed.error) {
+      throw new Error(`API 串流錯誤 (${provider}): ${parsed.error?.message || JSON.stringify(parsed.error || parsed)}`);
+    }
+
+    const choice = parsed.choices?.[0];
+    const delta = choice?.delta?.content;
+    if (typeof delta === 'string') {
+      fullContent += delta;
+    }
+    if (choice?.finish_reason) {
+      finishReason = choice.finish_reason;
+    }
+  });
+
+  if (finishReason === 'length') {
     console.warn(`[${provider}] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。`);
   }
-  const content = choice?.message?.content;
-  return content || "";
+
+  return fullContent;
 }

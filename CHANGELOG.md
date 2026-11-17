@@ -4,8 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [1.4.0] - 2026-11-17
 
-### ✨ 參數化免費 AI 引擎與 Vercel Serverless 安全代理
-- 新增 Vercel Serverless Function `api/free-llm.ts`，透過伺服器端環境變數集中管理上游金鑰與模型設定，確保 API Key 不進入 Git 歷史或前端靜態打包產物。
+### ✨ 參數化免費 AI 引擎與 Vercel Edge SSE 串流安全代理
+- 新增 Vercel Edge Runtime 函式 `api/free-llm.ts`（`runtime: 'edge'`，支援最長 300 秒串流執行）與 `services/sseUtils.ts` 共用 SSE 串流讀取器，透過伺服器端環境變數集中管理上游金鑰與模型設定，確保 API Key 不進入 Git 歷史或前端靜態打包產物。
+- **BYOK 與免費模式全面 SSE 串流防超時**：`api/free-llm.ts` 每 5 秒送出 `: keepalive` 心跳保活避免 Vercel / 上游 60 秒非串流 `504` 中斷；同時將 `services/aiService.ts` 的 OpenAI 相容端點（Gemini / OpenAI / Groq / Grok / OpenRouter / 自定義）與 Anthropic Claude 也全面升級為 `stream: true` 串流（並自動相容非串流 JSON 回應），徹底防止經過 Cloudflare 或反向代理時發生長推演閒置超時。
 - **隨時可開關的參數化設計**：支援 `FREE_LLM_ENABLED`（設為 `false` 即停用）、`FREE_LLM_API_KEY`、`FREE_LLM_BASE_URL`、`FREE_LLM_MODEL`、`FREE_LLM_ALLOWED_ORIGINS`，並於 `vercel.json` 配置 `maxDuration: 60`。
 - **安全與跨來源防護**：實作來源網域 CORS 白名單驗證（支援正式 Vercel 與 GitHub Pages 網域）、禁止快取狀態回應 (`Cache-Control: no-store`) 及請求字數上限檢查。
 - **雙模式平滑切換**：新增 `services/freeLlmService.ts`，更新 `types.ts`、`services/aiService.ts`、`App.tsx` 與 `components/BaziForm.tsx`。頁面載入時自動向 `/api/free-llm` 查詢可用狀態：
