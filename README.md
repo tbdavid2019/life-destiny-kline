@@ -20,10 +20,12 @@
 
 ## 📝 使用方法
 
-1. **填寫出生信息** - 選擇姓名、性別及日期時間，系統會自動排盤。
-2. **配置 API (可選)** - 輸入您的 API 金鑰、模型與基礎 URL。
-3. **一鍵生成** - 點擊「生成 888 人生 K 線」，等待 AI 智能分析後即可查看詳盡報告。
-4. **手動導入 (備選)** - 若您沒有 API Key，仍可使用提示詞生成後，將 JSON 數據貼回「手動導入」板塊。
+1. **填寫出生信息** - 選擇姓名、性別、出生日期時間與出生地點（含天文真太陽時校正），系統會自動計算四柱八字與紫微雙盤資訊。
+2. **選擇 AI 引擎**：
+   - **免費預設 AI 引擎**（當站方於後端啟用時顯示）：無須填寫任何 API Key，直接點擊生成即可體驗。
+   - **自備金鑰 (BYOK)**：選擇 Gemini、OpenAI、Claude、Groq、Grok、OpenRouter、AWS Bedrock 或自定義相容端點，填入您的 API Key 與模型名稱。
+3. **一鍵生成** - 點擊「生成 888 人生 K 線與百年詳批」，等待 AI 分析後即可查看圖表與流年詳批報告。
+4. **手動導入 (備選)** - 若不使用線上 AI 引擎，可切換至「手動導入」板塊，將外部 AI 產生的 JSON 數據貼回呈現。
 
 ---
 
@@ -50,28 +52,41 @@ npm run build
 
 ---
 
-## ⚙️ 環境配置與使用說明 (BYOK 模型)
+## ⚙️ 環境配置與使用說明 (支援免費代理與 BYOK 雙模式)
 
-本專案為純前端單頁應用程式 (Client-Side SPA)，採用 **BYOK (Bring Your Own Key)** 安全架構：
-- 使用者在瀏覽器中直接輸入個人 API Key（BYOK 自備金鑰架構，保護隱私不落地）。
-- API Key 僅保存在使用者的瀏覽器 `localStorage` 中，不會上傳到任何第三方託管服務器。
-- **重要安全提示**：純前端靜態建置不應將私有 API Key（如 `VITE_API_KEY`）打包至公開靜態資源中。
+本專案同時支援 **BYOK (Bring Your Own Key)** 與可選的 **Vercel Serverless 免費 AI 代理**：
 
-若需自定義預設 API 端點或模型名稱，可設定以下環境變數：
+### 1. 免費 AI 引擎（Vercel Serverless 伺服器端環境變數）
+透過 `api/free-llm.ts` 在伺服器端安全轉發請求，所有金鑰僅存於 Vercel 後台環境變數中，不會打包進前端靜態檔案或外洩給瀏覽器：
 
 | 變數名稱 | 說明 | 範例值 |
 | :--- | :--- | :--- |
-| `VITE_API_BASE_URL` | 預設 API 代理地址 (可選) | `https://generativelanguage.googleapis.com/v1beta/openai` |
-| `VITE_MODEL_NAME` | 預設大模型名稱 (可選) | `gemini-3-flash-preview` |
+| `FREE_LLM_ENABLED` | 免費模式總開關（設為 `false` 並 Redeploy 即可隨時關閉） | `true` |
+| `FREE_LLM_API_KEY` | 上游 OpenAI 相容閘道之私密金鑰（**僅限伺服器端**） | `sk-...` |
+| `FREE_LLM_BASE_URL` | 上游 OpenAI 相容端點基礎位址 | `https://llm.aiurl.tw/v1` |
+| `FREE_LLM_MODEL` | 免費模式預設模型名稱 | `group/talk` |
+| `FREE_LLM_ALLOWED_ORIGINS` | 允許呼叫的瀏覽器來源 CORS 白名單（可選，逗號分隔） | `https://life-destiny-kline.vercel.app,https://tbdavid2019.github.io` |
+
+### 2. 前端建置環境變數 (選填，僅限公開參數)
+- **重要安全提示**：`VITE_*` 變數會被打包進公開靜態資源中，**嚴禁**將私有 API Key 放入任何 `VITE_*` 變數；BYOK 模式下使用者輸入的金鑰僅保留於個人瀏覽器 `localStorage`。
+
+| 變數名稱 | 說明 | 範例值 |
+| :--- | :--- | :--- |
+| `VITE_MODEL_NAME` | BYOK 模式預設模型名稱 (可選) | `gemini-3-flash-preview` |
+| `VITE_FREE_LLM_ENABLED` | 建置期強制隱藏免費模式介面，設為 `false` 即停用 (可選) | `true` |
+| `VITE_FREE_LLM_ENDPOINT` | 覆寫免費代理端點位址 (可選，預設同源 `/api/free-llm` 或 Vercel 端點) | `/api/free-llm` |
+
+完整範本請參考 [`.env.example`](.env.example)。
 
 ---
 
 ## 🛠️ 技術棧
 
-- **前端框架**: React 19 + Vite
+- **前端框架**: React 19 + Vite 8 + TypeScript
 - **UI 樣式**: TailwindCSS
-- **圖表庫**: Recharts
-- **AI 支持**: ChatGPT、Claude、Gemini 等任意 AI
+- **圖表庫**: Recharts 3
+- **後端代理**: Vercel Serverless Functions (`api/free-llm.ts`)
+- **AI 支持**: 免費代理模式 + BYOK（Gemini、OpenAI、Claude、Groq、Grok、OpenRouter、AWS Bedrock、相容端點）
 
 ---
 
