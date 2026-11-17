@@ -840,8 +840,13 @@ async function callOpenAICompatibleApi(params: {
     }
 
     const choice = parsed.choices?.[0];
-    const delta = choice?.delta?.content;
-    if (typeof delta === 'string') {
+    const delta =
+      (typeof choice?.delta?.content === 'string' && choice.delta.content) ||
+      (typeof choice?.delta?.text === 'string' && choice.delta.text) ||
+      (typeof choice?.message?.content === 'string' && choice.message.content) ||
+      (typeof choice?.text === 'string' && choice.text) ||
+      '';
+    if (delta) {
       fullContent += delta;
     }
     if (choice?.finish_reason) {

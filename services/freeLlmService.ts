@@ -120,6 +120,7 @@ export async function callFreeLlmProxy(params: {
 
   let fullContent = '';
   let finishReason: string | undefined;
+  let receivedDoneMarker = false;
 
   await readSseStream(response, (eventName, dataStr) => {
     let parsed: {
@@ -127,6 +128,7 @@ export async function callFreeLlmProxy(params: {
       content?: string;
       finishReason?: string;
       error?: string;
+      done?: boolean;
     };
     try {
       parsed = JSON.parse(dataStr);
@@ -136,6 +138,11 @@ export async function callFreeLlmProxy(params: {
 
     if (eventName === 'error' || parsed.error) {
       throw new Error(parsed.error || '免費 AI 引擎回傳異常，請稍後重試或切換至自備金鑰 (BYOK)。');
+    }
+
+    if (parsed.done) {
+      receivedDoneMarker = true;
+      return;
     }
 
     if (typeof parsed.delta === 'string') {
@@ -148,6 +155,18 @@ export async function callFreeLlmProxy(params: {
       finishReason = parsed.finishReason;
     }
   });
+
+  if (!fullContent.trim()) {
+    throw new Error(
+      receivedDoneMarker
+        ? '免費 AI 引擎這次未產出內容，請再點擊生成一次，或切換至自備金鑰 (BYOK)。'
+        : '免費 AI 引擎串流連線意外中斷（尚未收到任何內容），請再試一次或切換至自備金鑰 (BYOK)。'
+    );
+  }
+
+  if (!receivedDoneMarker) {
+    console.warn('[free-llm] 串流未收到完整結束標記即斷線，嘗試修復已接收的局部 JSON 資料。');
+  }
 
   if (finishReason === 'length') {
     console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');

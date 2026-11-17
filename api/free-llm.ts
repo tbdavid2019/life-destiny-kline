@@ -103,6 +103,215 @@ function readFreeLlmConfig() {
   };
 }
 
+interface UpstreamAttemptResult {
+  emittedChars: number;
+  reasoningChars: number;
+  finishReason?: string;
+  errorMessage?: string;
+  httpStatus?: number;
+}
+
+function extractErrorText(parsed: Record<string, unknown>): string | undefined {
+  const err = parsed.error;
+  if (typeof err === 'string' && err.trim()) return err.trim();
+  if (err && typeof err === 'object') {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg.trim();
+    return JSON.stringify(err).slice(0, 240);
+  }
+  if (typeof parsed.detail === 'string' && parsed.detail.trim()) {
+    return parsed.detail.trim();
+  }
+  return undefined;
+}
+
+async function streamUpstreamOnce(params: {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  systemInstruction: string;
+  userPrompt: string;
+  signal: AbortSignal;
+  isClosed: () => boolean;
+  enqueueSse: (text: string) => void;
+}): Promise<UpstreamAttemptResult> {
+  const { endpoint, apiKey, model, systemInstruction, userPrompt, signal, isClosed, enqueueSse } = params;
+
+  const upstreamResponse = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: systemInstruction },
+        { role: 'user', content: userPrompt },
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 24000,
+    }),
+    signal,
+  });
+
+  if (!upstreamResponse.ok) {
+    const errDetail = (await upstreamResponse.text()).slice(0, 300);
+    return {
+      emittedChars: 0,
+      reasoningChars: 0,
+      httpStatus: upstreamResponse.status,
+      errorMessage: `免費 AI 引擎暫時無法回應 (${upstreamResponse.status})，可稍後重試或切換至自備金鑰 (BYOK)。${errDetail ? ` [${errDetail}]` : ''}`,
+    };
+  }
+
+  const contentType = upstreamResponse.headers.get('content-type') || '';
+
+  if (!contentType.includes('text/event-stream') || !upstreamResponse.body) {
+    const jsonResult = (await upstreamResponse.json().catch(() => ({}))) as {
+      choices?: Array<{
+        finish_reason?: string;
+        message?: { content?: string };
+        text?: string;
+      }>;
+      error?: unknown;
+      detail?: unknown;
+    };
+
+    const errText = extractErrorText(jsonResult as Record<string, unknown>);
+    if (errText) {
+      return {
+        emittedChars: 0,
+        reasoningChars: 0,
+        errorMessage: `免費 AI 引擎錯誤：${errText}`,
+      };
+    }
+
+    const choice = jsonResult.choices?.[0];
+    const content = choice?.message?.content || choice?.text || '';
+    if (content) {
+      enqueueSse(
+        `data: ${JSON.stringify({
+          delta: content,
+          finishReason: choice?.finish_reason,
+          model,
+        })}\n\n`
+      );
+    }
+
+    return {
+      emittedChars: content.length,
+      reasoningChars: 0,
+      finishReason: choice?.finish_reason,
+    };
+  }
+
+  const reader = upstreamResponse.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let lineBuffer = '';
+  let emittedChars = 0;
+  let reasoningChars = 0;
+  let lastFinishReason: string | undefined;
+  let errorMessage: string | undefined;
+
+  const handleLine = (rawLine: string): boolean => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith(':')) return false;
+    if (!line.startsWith('data:')) return false;
+
+    const dataStr = line.slice(5).trim();
+    if (dataStr === '[DONE]') {
+      return true;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(dataStr) as Record<string, unknown>;
+    } catch {
+      return false;
+    }
+
+    const errText = extractErrorText(parsed);
+    if (errText) {
+      errorMessage = `免費 AI 引擎錯誤：${errText}`;
+      return true;
+    }
+
+    const choices = parsed.choices as
+      | Array<{
+          delta?: { content?: string | null; text?: string | null; reasoning_content?: string | null; reasoning?: string | null };
+          message?: { content?: string | null };
+          text?: string | null;
+          finish_reason?: string | null;
+        }>
+      | undefined;
+
+    const choice = choices?.[0];
+    if (!choice) return false;
+
+    const reasoning = choice.delta?.reasoning_content || choice.delta?.reasoning || '';
+    if (typeof reasoning === 'string' && reasoning.length > 0) {
+      reasoningChars += reasoning.length;
+    }
+
+    const delta =
+      (typeof choice.delta?.content === 'string' && choice.delta.content) ||
+      (typeof choice.delta?.text === 'string' && choice.delta.text) ||
+      (typeof choice.message?.content === 'string' && choice.message.content) ||
+      (typeof choice.text === 'string' && choice.text) ||
+      '';
+
+    const finishReason = choice.finish_reason || undefined;
+    if (finishReason) {
+      lastFinishReason = finishReason;
+    }
+
+    if (delta || finishReason) {
+      emittedChars += delta.length;
+      enqueueSse(
+        `data: ${JSON.stringify({
+          delta,
+          finishReason,
+        })}\n\n`
+      );
+    }
+
+    return false;
+  };
+
+  while (!isClosed()) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    lineBuffer += decoder.decode(value, { stream: true });
+    const lines = lineBuffer.split(/\r?\n/);
+    lineBuffer = lines.pop() ?? '';
+
+    for (const rawLine of lines) {
+      if (handleLine(rawLine)) {
+        return {
+          emittedChars,
+          reasoningChars,
+          finishReason: lastFinishReason,
+          errorMessage,
+        };
+      }
+    }
+  }
+
+  if (lineBuffer.trim()) {
+    handleLine(lineBuffer);
+  }
+
+  return {
+    emittedChars,
+    reasoningChars,
+    finishReason: lastFinishReason,
+    errorMessage,
+  };
+}
+
 export default async function handler(req: Request): Promise<Response> {
   const { headers: corsHeaders, allowed } = buildCorsHeaders(req);
 
@@ -190,136 +399,68 @@ export default async function handler(req: Request): Promise<Response> {
         }
       };
 
-      // Immediately emit SSE header/comment so Edge TTFB stays well under 25s
-      // and keep the stream alive up to 300s for long 100-year Bazi generation.
       enqueueSse(': connected\n\n');
       heartbeatTimer = setInterval(() => {
         enqueueSse(': keepalive\n\n');
       }, HEARTBEAT_INTERVAL_MS);
 
       try {
-        const upstreamResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${configState.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: configState.model,
-            messages: [
-              { role: 'system', content: systemInstruction },
-              { role: 'user', content: userPrompt },
-            ],
-            stream: true,
-            temperature: 0.7,
-            max_tokens: 24000,
-          }),
+        let attempt = await streamUpstreamOnce({
+          endpoint,
+          apiKey: configState.apiKey,
+          model: configState.model,
+          systemInstruction,
+          userPrompt,
           signal: upstreamAbort.signal,
+          isClosed: () => streamClosed,
+          enqueueSse,
         });
 
-        if (!upstreamResponse.ok) {
-          const errDetail = (await upstreamResponse.text()).slice(0, 300);
+        // Auto-retry once if upstream returned 0 content characters (transient routing glitch)
+        const shouldRetry =
+          !streamClosed &&
+          attempt.emittedChars === 0 &&
+          (!attempt.httpStatus || attempt.httpStatus >= 500 || attempt.httpStatus === 429);
+
+        if (shouldRetry) {
+          enqueueSse(': retrying\n\n');
+          attempt = await streamUpstreamOnce({
+            endpoint,
+            apiKey: configState.apiKey,
+            model: configState.model,
+            systemInstruction,
+            userPrompt,
+            signal: upstreamAbort.signal,
+            isClosed: () => streamClosed,
+            enqueueSse,
+          });
+        }
+
+        if (attempt.errorMessage && attempt.emittedChars === 0) {
+          enqueueSse(`event: error\ndata: ${JSON.stringify({ error: attempt.errorMessage })}\n\n`);
+          finishStream();
+          return;
+        }
+
+        if (attempt.emittedChars === 0) {
           enqueueSse(
             `event: error\ndata: ${JSON.stringify({
-              error: `免費 AI 引擎暫時無法回應 (${upstreamResponse.status})，可稍後重試或切換至自備金鑰 (BYOK)。`,
-              detail: errDetail,
+              error: `免費 AI 引擎未輸出任何文字內容 (finishReason=${attempt.finishReason || 'none'}, reasoning=${attempt.reasoningChars})，請再點擊一次重新生成，或切換自備金鑰 (BYOK)。`,
             })}\n\n`
           );
           finishStream();
           return;
         }
 
-        const contentType = upstreamResponse.headers.get('content-type') || '';
-
-        if (!contentType.includes('text/event-stream') || !upstreamResponse.body) {
-          const jsonResult = (await upstreamResponse.json()) as {
-            choices?: Array<{
-              finish_reason?: string;
-              message?: { content?: string };
-            }>;
-          };
-          const choice = jsonResult.choices?.[0];
-          const content = choice?.message?.content || '';
-          enqueueSse(
-            `data: ${JSON.stringify({
-              delta: content,
-              finishReason: choice?.finish_reason,
-              model: configState.model,
-            })}\n\n`
-          );
-          enqueueSse('data: [DONE]\n\n');
-          finishStream();
-          return;
-        }
-
-        const reader = upstreamResponse.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let lineBuffer = '';
-
-        while (!streamClosed) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          lineBuffer += decoder.decode(value, { stream: true });
-          const lines = lineBuffer.split(/\r?\n/);
-          lineBuffer = lines.pop() ?? '';
-
-          for (const rawLine of lines) {
-            const line = rawLine.trim();
-            if (!line || line.startsWith(':')) continue;
-            if (!line.startsWith('data:')) continue;
-
-            const dataStr = line.slice(5).trim();
-            if (dataStr === '[DONE]') {
-              enqueueSse('data: [DONE]\n\n');
-              finishStream();
-              return;
-            }
-
-            try {
-              const parsed = JSON.parse(dataStr) as {
-                choices?: Array<{
-                  delta?: { content?: string };
-                  finish_reason?: string | null;
-                }>;
-                error?: { message?: string };
-              };
-
-              if (parsed.error?.message) {
-                enqueueSse(
-                  `event: error\ndata: ${JSON.stringify({
-                    error: `免費 AI 引擎錯誤：${parsed.error.message}`,
-                  })}\n\n`
-                );
-                finishStream();
-                return;
-              }
-
-              const choice = parsed.choices?.[0];
-              const delta = choice?.delta?.content || '';
-              const finishReason = choice?.finish_reason || undefined;
-
-              if (delta || finishReason) {
-                enqueueSse(
-                  `data: ${JSON.stringify({
-                    delta,
-                    finishReason,
-                  })}\n\n`
-                );
-              }
-            } catch {
-              // Ignore malformed partial SSE frames
-            }
-          }
-        }
-
+        enqueueSse(`data: ${JSON.stringify({ done: true, chars: attempt.emittedChars })}\n\n`);
         enqueueSse('data: [DONE]\n\n');
         finishStream();
       } catch (err) {
         if (!streamClosed) {
-          const msg = err instanceof Error && err.name === 'AbortError'
-            ? '免費 AI 引擎請求已取消。'
-            : '免費 AI 引擎連線逾時或暫時中斷，請稍後重試或切換至自備金鑰 (BYOK)。';
+          const msg =
+            err instanceof Error && err.name === 'AbortError'
+              ? '免費 AI 引擎請求已取消。'
+              : '免費 AI 引擎連線逾時或暫時中斷，請稍後重試或切換至自備金鑰 (BYOK)。';
           enqueueSse(`event: error\ndata: ${JSON.stringify({ error: msg })}\n\n`);
         }
         finishStream();
