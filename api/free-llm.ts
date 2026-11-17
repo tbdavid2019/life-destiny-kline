@@ -31,26 +31,42 @@ function getHeader(req: ApiRequest, name: string): string {
   return typeof raw === 'string' ? raw : '';
 }
 
-function isOriginAllowed(origin: string): boolean {
+function isOriginAllowed(req: ApiRequest, origin: string): boolean {
   if (!origin) return true;
+
+  const normalizedOrigin = origin.trim().replace(/\/+$/, '');
+  let originUrl: URL;
+  try {
+    originUrl = new URL(normalizedOrigin);
+  } catch {
+    return false;
+  }
+
+  // Always allow same-origin requests (covers custom domains & any Vercel alias)
+  const rawHost = (getHeader(req, 'x-forwarded-host') || getHeader(req, 'host')).split(',')[0]?.trim().toLowerCase();
+  if (rawHost && originUrl.host.toLowerCase() === rawHost) {
+    return true;
+  }
 
   const customList = (process.env.FREE_LLM_ALLOWED_ORIGINS || '')
     .split(',')
     .map((item) => item.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
-  const normalizedOrigin = origin.trim().replace(/\/+$/, '');
   const allowList = customList.length > 0 ? customList : DEFAULT_ALLOWED_ORIGINS;
 
-  if (allowList.includes('*') || allowList.includes(normalizedOrigin)) {
+  if (allowList.includes('*') || allowList.includes(originUrl.origin)) {
     return true;
   }
 
-  // Allow project Vercel preview deployments and local dev servers
-  if (/^https:\/\/life-destiny-kline(-[a-z0-9-]+)?\.vercel\.app$/i.test(normalizedOrigin)) {
+  // Allow project Vercel preview/production aliases, david888.com subdomains, and local dev servers
+  if (/^https:\/\/life-destiny-kline(-[a-z0-9-]+)?\.vercel\.app$/i.test(originUrl.origin)) {
     return true;
   }
-  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(normalizedOrigin)) {
+  if (/^https:\/\/([a-z0-9-]+\.)?david888\.com$/i.test(originUrl.origin)) {
+    return true;
+  }
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(originUrl.origin)) {
     return true;
   }
 
@@ -59,7 +75,7 @@ function isOriginAllowed(origin: string): boolean {
 
 function applyCors(req: ApiRequest, res: ApiResponse): boolean {
   const origin = getHeader(req, 'origin');
-  const allowed = isOriginAllowed(origin);
+  const allowed = isOriginAllowed(req, origin);
 
   if (origin && allowed) {
     res.setHeader('Access-Control-Allow-Origin', origin);
