@@ -143,7 +143,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           const hasSavedByokCredentials = Boolean(
             prev.apiKey?.trim() || prev.awsAccessKeyId?.trim() || prev.awsSecretAccessKey?.trim()
           );
-          if (!hasSavedByokCredentials && (!initialData?.provider || initialData.provider === 'free')) {
+          if (!hasSavedByokCredentials) {
             return { ...prev, provider: 'free' };
           }
           return prev;
@@ -211,7 +211,17 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
   useEffect(() => {
     if (initialData) {
       setFormData((prev) => {
-        const nextProvider = (initialData.provider as AIProvider) || prev.provider;
+        const hasInitialCredentials = Boolean(
+          initialData.apiKey?.trim() ||
+            initialData.awsAccessKeyId?.trim() ||
+            initialData.awsSecretAccessKey?.trim()
+        );
+        const incomingProvider = initialData.provider as AIProvider | undefined;
+        const nextProvider: AIProvider =
+          freeLlmStatus.enabled && !hasInitialCredentials && (!incomingProvider || incomingProvider === 'free' || prev.provider === 'free')
+            ? 'free'
+            : incomingProvider || prev.provider || 'gemini';
+
         if (nextProvider && nextProvider !== 'free') {
           setLastByokProvider(nextProvider);
         }
@@ -223,7 +233,7 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
           apiBaseUrl:
             initialData.apiBaseUrl ||
             prev.apiBaseUrl ||
-            getDefaultBaseUrl(nextProvider || 'gemini'),
+            getDefaultBaseUrl(nextProvider === 'free' ? lastByokProvider : nextProvider),
         };
       });
 
@@ -720,108 +730,65 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
         )}
 
         {/* ============================================================ */}
-        {/* AI 引擎與模型配置區塊 (支援參數化免費引擎與 BYOK 切換) */}
+        {/* AI 引擎與模型配置區塊 (免費模式時自動收合 BYOK，避免誤以為需填金鑰) */}
         {/* ============================================================ */}
+        {!freeLlmStatus.checked ? (
+          <div className="bg-slate-50 px-5 py-4 rounded-2xl border border-slate-200 flex items-center gap-3 text-slate-700 text-sm sm:text-base font-medium">
+            <Loader2 className="w-4 h-4 animate-spin text-indigo-700 flex-shrink-0" />
+            <span>正在偵測 AI 引擎連線狀態...</span>
+          </div>
+        ) : isFreeMode ? (
+          <div className="bg-emerald-50 p-4 sm:p-5 rounded-2xl border border-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-700 flex-shrink-0" />
+                <span className="text-base sm:text-lg font-bold text-emerald-950">
+                  免費 AI 引擎已就緒（免填 API Key）
+                </span>
+                {freeLlmStatus.model && (
+                  <span className="text-xs sm:text-sm font-mono font-bold px-2.5 py-0.5 rounded-md bg-white text-emerald-950 border border-emerald-300">
+                    {freeLlmStatus.model}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-slate-800 font-medium leading-relaxed">
+                不需申請或填寫任何金鑰，填好上方生辰資料後直接點擊生成即可開始推演。
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleProviderSelect(lastByokProvider !== 'free' ? lastByokProvider : 'gemini')}
+              className="self-start sm:self-center flex-shrink-0 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-900 border border-emerald-300 hover:border-slate-400 text-sm font-bold transition shadow-sm flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none"
+            >
+              <Settings className="w-4 h-4 text-slate-700" />
+              <span>改用自備金鑰 (BYOK)</span>
+            </button>
+          </div>
+        ) : (
         <div className="bg-slate-50 p-5 sm:p-6 rounded-2xl border border-slate-300 space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
             <div className="flex items-center gap-2 text-slate-950 text-base sm:text-lg font-bold">
               <Cpu className="w-5 h-5 text-indigo-700 flex-shrink-0" />
-              <span>AI 引擎與模型設定</span>
+              <span>AI 引擎與自備金鑰 (BYOK)</span>
             </div>
-            {isFreeMode ? (
-              <span className="text-sm px-3 py-1 rounded-full bg-emerald-100 text-emerald-950 font-bold border border-emerald-300">
-                免費免金鑰直連
-              </span>
-            ) : (
+            <div className="flex items-center gap-2">
+              {freeLlmStatus.enabled && (
+                <button
+                  type="button"
+                  onClick={() => handleProviderSelect('free')}
+                  className="text-sm px-3 py-1 rounded-full bg-emerald-100 hover:bg-emerald-200 text-emerald-950 font-bold border border-emerald-300 transition flex items-center gap-1.5 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:outline-none"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>切回免費免金鑰模式</span>
+                </button>
+              )}
               <span className="text-sm px-3 py-1 rounded-full bg-indigo-100 text-indigo-950 font-bold border border-indigo-200">
-                自備金鑰 (BYOK)
+                連線取得即時模型
               </span>
-            )}
+            </div>
           </div>
 
-          {freeLlmStatus.enabled && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5" role="group" aria-label="AI 使用模式切換">
-              <button
-                type="button"
-                onClick={() => handleProviderSelect('free')}
-                aria-pressed={isFreeMode}
-                className={`p-3.5 rounded-2xl text-left transition-all border flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-emerald-700 focus-visible:outline-none ${
-                  isFreeMode
-                    ? 'border-emerald-700 bg-white text-emerald-950 font-bold shadow-sm ring-2 ring-emerald-600/20'
-                    : 'border-slate-300 bg-white/90 hover:bg-white text-slate-800 hover:border-slate-400'
-                }`}
-              >
-                <div className="space-y-0.5">
-                  <div className="text-sm sm:text-base font-bold flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-emerald-700 flex-shrink-0" />
-                    <span>免費預設 AI 引擎</span>
-                  </div>
-                  <div className="text-xs sm:text-sm text-slate-700 font-medium">
-                    免填 API Key，立即可用
-                  </div>
-                </div>
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-md font-bold flex-shrink-0 ${
-                    isFreeMode
-                      ? 'bg-emerald-100 text-emerald-950'
-                      : 'bg-slate-200 text-slate-800'
-                  }`}
-                >
-                  推薦
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleProviderSelect(lastByokProvider !== 'free' ? lastByokProvider : 'gemini')}
-                aria-pressed={!isFreeMode}
-                className={`p-3.5 rounded-2xl text-left transition-all border flex items-center justify-between gap-3 focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:outline-none ${
-                  !isFreeMode
-                    ? 'border-indigo-600 bg-white text-indigo-950 font-bold shadow-sm ring-2 ring-indigo-500/20'
-                    : 'border-slate-300 bg-white/90 hover:bg-white text-slate-800 hover:border-slate-400'
-                }`}
-              >
-                <div className="space-y-0.5">
-                  <div className="text-sm sm:text-base font-bold flex items-center gap-1.5">
-                    <Settings className="w-4 h-4 text-indigo-700 flex-shrink-0" />
-                    <span>自備金鑰 (BYOK)</span>
-                  </div>
-                  <div className="text-xs sm:text-sm text-slate-700 font-medium">
-                    自選 Gemini / ChatGPT / Claude 等
-                  </div>
-                </div>
-                <span
-                  className={`text-xs px-2.5 py-1 rounded-md font-bold flex-shrink-0 ${
-                    !isFreeMode
-                      ? 'bg-indigo-100 text-indigo-950'
-                      : 'bg-slate-200 text-slate-800'
-                  }`}
-                >
-                  進階
-                </span>
-              </button>
-            </div>
-          )}
-
-          {isFreeMode ? (
-            <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-4 sm:p-5 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-emerald-950 font-bold text-sm sm:text-base">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-700 flex-shrink-0" />
-                  <span>已啟用站方免費 AI 引擎，無需設定 API Key</span>
-                </div>
-                {freeLlmStatus.model && (
-                  <span className="text-xs sm:text-sm font-mono font-bold px-2.5 py-1 rounded-lg bg-white text-emerald-950 border border-emerald-300">
-                    模型：{freeLlmStatus.model}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-slate-800 leading-relaxed font-medium">
-                所有推演請求由伺服器端安全代理轉發，金鑰不會外洩至瀏覽器。填妥上方出生資料後即可直接點擊生成報告。
-              </p>
-            </div>
-          ) : (
-            <>
           {/* Provider 選擇按鈕矩陣 (絕無省略號，自然換行，大字體) */}
           <div>
             <label className="block text-sm sm:text-base font-bold text-slate-900 mb-2.5">
@@ -1169,9 +1136,8 @@ const BaziForm: React.FC<BaziFormProps> = ({ onSubmit, isLoading, initialData })
               </div>
             )}
           </div>
-            </>
-          )}
         </div>
+        )}
 
         {/* 提交按鈕 */}
         <button
