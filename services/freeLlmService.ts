@@ -71,7 +71,7 @@ export async function fetchFreeLlmStatus(): Promise<FreeLlmStatus> {
 }
 
 /**
- * 透過後端安全代理呼叫免費 AI 引擎
+ * 透過後端安全串流代理呼叫免費 AI 引擎（支援長時間推演不斷線）
  */
 export async function callFreeLlmProxy(params: {
   systemInstruction: string;
@@ -93,21 +93,113 @@ export async function callFreeLlmProxy(params: {
     }),
   });
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    content?: string;
-    finishReason?: string;
-    error?: string;
-  };
-
   if (!response.ok) {
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(
       payload.error || `免費 AI 引擎請求失敗 (${response.status})，請稍後重試或切換至自備金鑰 (BYOK)。`
     );
   }
 
-  if (payload.finishReason === 'length') {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/event-stream') || !response.body) {
+    const payload = (await response.json().catch(() => ({}))) as {
+      content?: string;
+      finishReason?: string;
+      error?: string;
+    };
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    if (payload.finishReason === 'length') {
+      console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');
+    }
+    return payload.content || '';
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let currentEvent = 'message';
+  let fullContent = '';
+  let finishReason: string | undefined;
+
+  const processLine = (rawLine: string): boolean => {
+    const line = rawLine.trim();
+    if (!line) {
+      currentEvent = 'message';
+      return false;
+    }
+    if (line.startsWith(':')) {
+      return false;
+    }
+    if (line.startsWith('event:')) {
+      currentEvent = line.slice(6).trim();
+      return false;
+    }
+    if (!line.startsWith('data:')) {
+      return false;
+    }
+
+    const dataStr = line.slice(5).trim();
+    if (dataStr === '[DONE]') {
+      return true;
+    }
+
+    let parsed: {
+      delta?: string;
+      content?: string;
+      finishReason?: string;
+      error?: string;
+    };
+    try {
+      parsed = JSON.parse(dataStr);
+    } catch {
+      return false;
+    }
+
+    if (currentEvent === 'error' || parsed.error) {
+      throw new Error(parsed.error || '免費 AI 引擎回傳異常，請稍後重試或切換至自備金鑰 (BYOK)。');
+    }
+
+    if (typeof parsed.delta === 'string') {
+      fullContent += parsed.delta;
+    } else if (typeof parsed.content === 'string') {
+      fullContent += parsed.content;
+    }
+
+    if (parsed.finishReason) {
+      finishReason = parsed.finishReason;
+    }
+
+    return false;
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() ?? '';
+
+    for (const rawLine of lines) {
+      const finished = processLine(rawLine);
+      if (finished) {
+        if (finishReason === 'length') {
+          console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');
+        }
+        return fullContent;
+      }
+    }
+  }
+
+  if (buffer.trim()) {
+    processLine(buffer);
+  }
+
+  if (finishReason === 'length') {
     console.warn('[free-llm] 模型輸出觸及長度上限 (finish_reason: length)，啟動自動修復與流年補齊機制。');
   }
 
-  return payload.content || '';
+  return fullContent;
 }
